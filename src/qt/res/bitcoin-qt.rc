@@ -19,7 +19,7 @@ BEGIN
         BLOCK "040904E4" // U.S. English - multilingual (hex)
         BEGIN
             VALUE "CompanyName",        "UtilityCoin"
-            VALUE "FileDescription",    "UtilityCoin-Qt (OSS GUI client for KeyCoin)"
+            VALUE "FileDescription",    "UtilityCoin-Qt (OSS GUI client for UtilityCoin)"
             VALUE "FileVersion",        VER_FILEVERSION_STR
             VALUE "InternalName",       "UtilityCoin-qt"
             VALUE "LegalCopyright",     "2014 The UtilityCoin developers"

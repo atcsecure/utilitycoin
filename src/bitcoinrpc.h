@@ -218,4 +218,9 @@ extern json_spirit::Value getblock(const json_spirit::Array& params, bool fHelp)
 extern json_spirit::Value getblockbynumber(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getcheckpoint(const json_spirit::Array& params, bool fHelp);
 
+// in rpcutility.cpp
+extern json_spirit::Value generatesharedkey(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value startservicenodes(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value stopservicenodes(const json_spirit::Array& params, bool fHelp);
+
 #endif

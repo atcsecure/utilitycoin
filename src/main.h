@@ -15,6 +15,7 @@
 #include <list>
 
 class CWallet;
+//class CUtilityNode;
 class CBlock;
 class CBlockIndex;
 class CKeyItem;
@@ -25,6 +26,9 @@ class CAddress;
 class CInv;
 class CRequestTracker;
 class CNode;
+
+class CTxDB;
+class CTxIndex;
 
 static const int LAST_POW_BLOCK = 5000;
 
@@ -82,6 +86,8 @@ extern const std::string strMessageMagic;
 extern int64_t nTimeBestReceived;
 extern CCriticalSection cs_setpwalletRegistered;
 extern std::set<CWallet*> setpwalletRegistered;
+//extern CCriticalSection cs_setpnodeRegistered;
+//extern std::set<CUtilityNode*> setpnodeRegistered;
 extern unsigned char pchMessageStart[4];
 extern std::map<uint256, CBlock*> mapOrphanBlocks;
 
@@ -97,12 +103,10 @@ extern bool fEnforceCanonical;
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64_t nMinDiskSpace = 52428800;
 
-class CReserveKey;
-class CTxDB;
-class CTxIndex;
-
 void RegisterWallet(CWallet* pwalletIn);
 void UnregisterWallet(CWallet* pwalletIn);
+//void RegisterNode(CUtilityNode* pNode);
+//void UnregisterNode(CUtilityNode* pNode);
 void SyncWithWallets(const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);
 bool ProcessBlock(CNode* pfrom, CBlock* pblock);
 bool CheckDiskSpace(uint64_t nAdditionalBytes=0);

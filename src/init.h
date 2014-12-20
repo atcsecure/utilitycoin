@@ -6,9 +6,11 @@
 #define BITCOIN_INIT_H
 
 #include "wallet.h"
+#include "utilitynode.h"
 
 extern CWallet* pwalletMain;
 extern std::string strWalletFileName;
+extern CUtilityNode* pNodeMain;
 void StartShutdown();
 void Shutdown(void* parg);
 bool AppInit2();

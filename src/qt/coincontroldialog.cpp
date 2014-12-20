@@ -185,22 +185,22 @@ void CoinControlDialog::showMenu(const QPoint &point)
         if (item->text(COLUMN_TXHASH).length() == 64) // transaction hash is 64 characters (this means its a child node, so its not a parent node in tree mode)
         {
             copyTransactionHashAction->setEnabled(true);
-            //if (model->isLockedCoin(uint256(item->text(COLUMN_TXHASH).toStdString()), item->text(COLUMN_VOUT_INDEX).toUInt()))
-            //{
-            //    lockAction->setEnabled(false);
-            //    unlockAction->setEnabled(true);
-            //}
-            //else
-            //{
-            //    lockAction->setEnabled(true);
-            //    unlockAction->setEnabled(false);
-            //}
+            if (pNodeMain->IsLockedOutPoint(uint256(item->text(COLUMN_TXHASH).toStdString()), item->text(COLUMN_VOUT_INDEX).toUInt()))
+            {
+                lockAction->setEnabled(false);
+                unlockAction->setEnabled(true);
+            }
+            else
+            {
+                lockAction->setEnabled(true);
+                unlockAction->setEnabled(false);
+            }
         }
         else // this means click on parent node in tree mode -> disable all
         {
             copyTransactionHashAction->setEnabled(false);
-            //lockAction->setEnabled(false);
-            //unlockAction->setEnabled(false);
+            lockAction->setEnabled(false);
+            unlockAction->setEnabled(false);
         }
 
         // show context menu
@@ -239,27 +239,27 @@ void CoinControlDialog::copyTransactionHash()
 }
 
 // context menu action: lock coin
-/*void CoinControlDialog::lockCoin()
+void CoinControlDialog::lockCoin()
 {
     if (contextMenuItem->checkState(COLUMN_CHECKBOX) == Qt::Checked)
         contextMenuItem->setCheckState(COLUMN_CHECKBOX, Qt::Unchecked);
 
     COutPoint outpt(uint256(contextMenuItem->text(COLUMN_TXHASH).toStdString()), contextMenuItem->text(COLUMN_VOUT_INDEX).toUInt());
-    model->lockCoin(outpt);
+    pNodeMain->LockOutPoint(outpt);
     contextMenuItem->setDisabled(true);
     contextMenuItem->setIcon(COLUMN_CHECKBOX, QIcon(":/icons/lock_closed"));
     updateLabelLocked();
-}*/
+}
 
 // context menu action: unlock coin
-/*void CoinControlDialog::unlockCoin()
+void CoinControlDialog::unlockCoin()
 {
     COutPoint outpt(uint256(contextMenuItem->text(COLUMN_TXHASH).toStdString()), contextMenuItem->text(COLUMN_VOUT_INDEX).toUInt());
-    model->unlockCoin(outpt);
+    pNodeMain->UnlockOutPoint(outpt);
     contextMenuItem->setDisabled(false);
     contextMenuItem->setIcon(COLUMN_CHECKBOX, QIcon());
     updateLabelLocked();
-}*/
+}
 
 // copy label "Quantity" to clipboard
 void CoinControlDialog::clipboardQuantity()
@@ -398,17 +398,17 @@ QString CoinControlDialog::getPriorityLabel(double dPriority)
 }
 
 // shows count of locked unspent outputs
-/*void CoinControlDialog::updateLabelLocked()
+void CoinControlDialog::updateLabelLocked()
 {
-    vector<COutPoint> vOutpts;
-    model->listLockedCoins(vOutpts);
-    if (vOutpts.size() > 0)
+    int nSize = pNodeMain->GetLockedOutPoints().size();
+
+    if (nSize > 0)
     {
-       ui->labelLocked->setText(tr("(%1 locked)").arg(vOutpts.size()));
+       ui->labelLocked->setText(tr("(%1 locked)").arg(nSize));
        ui->labelLocked->setVisible(true); 
     }
     else ui->labelLocked->setVisible(false);
-}*/
+}
 
 void CoinControlDialog::updateLabels(WalletModel *model, QDialog* dialog)
 {

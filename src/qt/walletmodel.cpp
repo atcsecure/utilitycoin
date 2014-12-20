@@ -446,23 +446,3 @@ void WalletModel::listCoins(std::map<QString, std::vector<COutput> >& mapCoins) 
         mapCoins[CBitcoinAddress(address).ToString().c_str()].push_back(out);
     }
 }
-
-bool WalletModel::isLockedCoin(uint256 hash, unsigned int n) const
-{
-    return false;
-}
-
-void WalletModel::lockCoin(COutPoint& output)
-{
-    return;
-}
-
-void WalletModel::unlockCoin(COutPoint& output)
-{
-    return;
-}
-
-void WalletModel::listLockedCoins(std::vector<COutPoint>& vOutpts)
-{
-    return;
-}

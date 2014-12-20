@@ -50,6 +50,18 @@ static const int64_t CENT = 1000000;
 #define UINTBEGIN(a)        ((uint32_t*)&(a))
 #define CUINTBEGIN(a)        ((const uint32_t*)&(a))
 
+#ifndef PRI64d
+#if defined(_MSC_VER) || defined(__MSVCRT__)
+#define PRI64d  "I64d"
+#define PRI64u  "I64u"
+#define PRI64x  "I64x"
+#else
+#define PRI64d  "lld"
+#define PRI64u  "llu"
+#define PRI64x  "llx"
+#endif
+#endif
+
 #ifndef THROW_WITH_STACKTRACE
 #define THROW_WITH_STACKTRACE(exception)  \
 {                                         \
@@ -525,6 +537,17 @@ uint256 SerializeHash(const T& obj, int nType=SER_GETHASH, int nVersion=PROTOCOL
     CHashWriter ss(nType, nVersion);
     ss << obj;
     return ss.GetHash();
+}
+
+template<typename T1>
+inline uint160 Hash160(const T1 pbegin, const T1 pend)
+{
+    static unsigned char pblank[1];
+    uint256 hash1;
+    SHA256((pbegin == pend ? pblank : (unsigned char*)&pbegin[0]), (pend - pbegin) * sizeof(pbegin[0]), (unsigned char*)&hash1);
+    uint160 hash2;
+    RIPEMD160((unsigned char*)&hash1, sizeof(hash1), (unsigned char*)&hash2);
+    return hash2;
 }
 
 inline uint160 Hash160(const std::vector<unsigned char>& vch)

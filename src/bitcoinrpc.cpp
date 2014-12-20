@@ -185,6 +185,10 @@ string CRPCTable::help(string strCommand) const
         {
             // Help text is returned in an exception
             string strHelp = string(e.what());
+
+            if (strHelp.length() == 0)
+                continue;
+
             if (strCommand == "")
                 if (strHelp.find('\n') != string::npos)
                     strHelp = strHelp.substr(0, strHelp.find('\n'));
@@ -300,12 +304,16 @@ static const CRPCCommand vRPCCommands[] =
     { "signrawtransaction",     &signrawtransaction,     false,  false },
     { "sendrawtransaction",     &sendrawtransaction,     false,  false },
     { "getcheckpoint",          &getcheckpoint,          true,   false },
-    { "reservebalance",         &reservebalance,         false,  true},
-    { "checkwallet",            &checkwallet,            false,  true},
-    { "repairwallet",           &repairwallet,           false,  true},
-    { "resendtx",               &resendtx,               false,  true},
-    { "makekeypair",            &makekeypair,            false,  true},
-    { "sendalert",              &sendalert,              false,  false},
+    { "reservebalance",         &reservebalance,         false,  true  },
+    { "checkwallet",            &checkwallet,            false,  true  },
+    { "repairwallet",           &repairwallet,           false,  true  },
+    { "resendtx",               &resendtx,               false,  true  },
+    { "makekeypair",            &makekeypair,            false,  true  },
+    { "sendalert",              &sendalert,              false,  false },
+    { "generatesharedkey",      &generatesharedkey,      false,  false },
+    { "startservicenodes",      &startservicenodes,      false,  true  },
+    { "stopservicenodes",       &stopservicenodes,       false,  true  }
+
 };
 
 CRPCTable::CRPCTable()

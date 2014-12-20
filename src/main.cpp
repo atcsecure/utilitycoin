@@ -26,6 +26,9 @@ using namespace boost;
 CCriticalSection cs_setpwalletRegistered;
 set<CWallet*> setpwalletRegistered;
 
+//CCriticalSection cs_setpnodeRegistered;
+//set<CUtilityNode*> setpnodeRegistered;
+
 CCriticalSection cs_main;
 
 CTxMemPool mempool;
@@ -105,6 +108,22 @@ void UnregisterWallet(CWallet* pwalletIn)
         setpwalletRegistered.erase(pwalletIn);
     }
 }
+
+//void RegisterNode(CUtilityNode* pNode)
+//{
+//    {
+//        LOCK(cs_setpnodeRegistered);
+//        setpnodeRegistered.insert(pNode);
+//    }
+//}
+
+//void UnregisterNode(CUtilityNode* pNode)
+//{
+//    {
+//        LOCK(cs_setpnodeRegistered);
+//        setpnodeRegistered.insert(pNode);
+//    }
+//}
 
 // check whether the passed transaction is from us
 bool static IsFromMe(CTransaction& tx)
@@ -2423,6 +2442,9 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
     if (pfrom && !CSyncCheckpoint::strMasterPrivKey.empty())
         Checkpoints::SendSyncCheckpoint(Checkpoints::AutoSelectSyncCheckpoint());
 
+    if (!IsInitialBlockDownload())
+        pNodeMain->UpdateLocks();
+
     return true;
 }
 
@@ -2466,7 +2488,7 @@ bool CBlock::SignBlock(CWallet& wallet, int64_t nFees)
                 hashMerkleRoot = BuildMerkleTree();
 
                 // append a signature to our block
-                return key.Sign(GetHash(), vchBlockSig);
+               return key.Sign(GetHash(), vchBlockSig);
             }
         }
         nLastCoinStakeSearchInterval = nSearchTime - nLastCoinStakeSearchTime;
@@ -3564,7 +3586,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     else
     {
-        // Ignore unknown commands for extensibility
+        pNodeMain->ProcessMessage(pfrom, strCommand, vRecv);
     }
 
 

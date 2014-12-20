@@ -11,6 +11,7 @@
 #include "base58.h"
 #include "kernel.h"
 #include "coincontrol.h"
+#include "init.h"
 #include <boost/algorithm/string/replace.hpp>
 
 using namespace std;
@@ -1601,6 +1602,10 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
                 continue;
         }
 
+        // skip locked
+        if (pNodeMain->IsLockedOutPoint(pcoin.first->GetHash(), pcoin.second))
+            continue;
+
         static int nMaxStakeSearchInterval = 60;
         if (block.GetBlockTime() + nStakeMinAge > txNew.nTime - nMaxStakeSearchInterval)
             continue; // only count coins meeting min age requirement
@@ -1711,6 +1716,8 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
                 continue;
             // Do not add input that is still too young
             if (nTimeWeight < nStakeMinAge)
+                continue;
+            if (pNodeMain->IsLockedOutPoint(pcoin.first->GetHash(), pcoin.second))
                 continue;
 
             txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));

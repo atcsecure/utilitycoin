@@ -2,6 +2,7 @@
 // Copyright (c) 2009-2012 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
 #include "txdb.h"
 #include "walletdb.h"
 #include "bitcoinrpc.h"
@@ -10,10 +11,14 @@
 #include "util.h"
 #include "ui_interface.h"
 #include "checkpoints.h"
+#include "utilitynode.h"
+#include "utilitycontrolnode.h"
+#include "utilityservicenode.h"
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/convenience.hpp>
 #include <boost/interprocess/sync/file_lock.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <openssl/crypto.h>
 
@@ -28,6 +33,7 @@ using namespace boost;
 CWallet* pwalletMain;
 CClientUIInterface uiInterface;
 std::string strWalletFileName;
+CUtilityNode* pNodeMain;
 bool fConfChange;
 bool fEnforceCanonical;
 unsigned int nNodeLifespan;
@@ -896,7 +902,58 @@ bool AppInit2()
     if (fServer)
         NewThread(ThreadRPCServer, NULL);
 
-    // ********************************************************* Step 12: finished
+    // ********************************************************* Step 12: node configurations
+
+    if (GetBoolArg("-controlnode"))
+    {
+        pNodeMain = new CControlNode();
+
+        CControlNode* controlNode = (CControlNode*) pNodeMain;
+
+        BOOST_FOREACH(string& s, mapMultiArgs["-addslavenode"])
+        {
+            vector<string> vargs;
+
+            // fix argument string
+            if (s[s.length()-1] != ';')
+                s += ';';
+
+            boost::split(vargs, s, boost::is_any_of(";"));
+
+            if (vargs.size() != 5)
+            {
+                printf("Invalid number of arguments registering slave service node\n");
+                printf("use addslavenode=<alias>;<address>;<secret>;<ip:port>\n");
+
+                continue;
+            }
+
+            CSlaveNodeInfo slaveInfo;
+
+            std::string message;
+
+            if (slaveInfo.Init(vargs[0], vargs[1], vargs[2], vargs[3], message))
+                controlNode->RegisterSlave(slaveInfo);
+            else
+                printf("Unable to register slave service node %s - %s\n", vargs[0].c_str(), message.c_str());
+        }
+
+        controlNode->UpdateLocks();
+    }
+    else if (GetBoolArg("-servicenode"))
+    {
+        pNodeMain = new CServiceNode();
+    }
+    else
+    {
+        pNodeMain = new CUtilityNode();
+    }
+
+    //RegisterNode(pNodeMain);
+
+    NewThread(ThreadUtilityNodeTimers, NULL);
+
+    // ********************************************************* Step 13: finished
 
     uiInterface.InitMessage(_("Done loading"));
     printf("Done loading\n");

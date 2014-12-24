@@ -135,10 +135,7 @@ SOURCES += src/txdb-leveldb.cpp \
     src/simd.c \
     src/skein.c \
     src/fugue.c \
-    src/hamsi.c \
-    src/utilityservicenode.cpp \
-    src/utilitycontrolnode.cpp \
-    src/utilitynodemessage.cpp
+    src/hamsi.c
 !win32 {
     # we use QMAKE_CXXFLAGS_RELEASE even without RELEASE=1 because we use RELEASE to indicate linking preferences not -O preferences
     genleveldb.commands = cd $$PWD/src/leveldb && CC=$$QMAKE_CC CXX=$$QMAKE_CXX $(MAKE) OPT=\"$$QMAKE_CXXFLAGS $$QMAKE_CXXFLAGS_RELEASE\" libleveldb.a libmemenv.a
@@ -361,7 +358,10 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/scrypt.cpp \
     src/pbkdf2.cpp \
     src/rpcutility.cpp \
-    src/utilitynode.cpp
+    src/utilitynode.cpp \
+    src/utilityservicenode.cpp \
+    src/utilitycontrolnode.cpp \
+    src/utilitynodemessage.cpp
 
 RESOURCES += \
     src/qt/bitcoin.qrc

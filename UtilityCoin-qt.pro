@@ -18,16 +18,16 @@ greaterThan(QT_MAJOR_VERSION, 4) {
 
 win32 {
 BOOST_LIB_SUFFIX=-mgw48-mt-s-1_55
-BOOST_INCLUDE_PATH=e:/deps/boost_1_55_0
-BOOST_LIB_PATH=e:/deps/boost_1_55_0/stage/lib
-BDB_INCLUDE_PATH=e:/deps/db-4.8.30.NC/build_unix
-BDB_LIB_PATH=e:/deps/db-4.8.30.NC/build_unix
-OPENSSL_INCLUDE_PATH=e:/deps/openssl-1.0.1g/include
-OPENSSL_LIB_PATH=e:/deps/openssl-1.0.1g
-MINIUPNPC_INCLUDE_PATH=e:/deps/
-MINIUPNPC_LIB_PATH=e:/deps/miniupnpc
-QRENCODE_INCLUDE_PATH=e:/deps/qrencode-3.4.3
-QRENCODE_LIB_PATH=e:/deps/qrencode-3.4.3/.libs
+BOOST_INCLUDE_PATH=D:/Libraries/boost_1_55_0
+BOOST_LIB_PATH=D:/Libraries/boost_1_55_0/stage/lib
+BDB_INCLUDE_PATH=D:/Libraries/db-4.8.30.NC/build_unix
+BDB_LIB_PATH=D:/Libraries/db-4.8.30.NC/build_unix
+OPENSSL_INCLUDE_PATH=D:/Libraries/openssl-1.0.1j/include
+OPENSSL_LIB_PATH=D:/Libraries/openssl-1.0.1j
+MINIUPNPC_INCLUDE_PATH=D:/Libraries/miniupnpc-1.6.20120509
+MINIUPNPC_LIB_PATH=D:/Libraries/miniupnpc-1.6.20120509/miniupnpc
+QRENCODE_INCLUDE_PATH=D:/Libraries/qrencode-3.4.3
+QRENCODE_LIB_PATH=D:/Libraries/qrencode-3.4.3/.libs
 }
 
 # for boost 1.37, add -mt to the boost libraries
@@ -135,7 +135,10 @@ SOURCES += src/txdb-leveldb.cpp \
     src/simd.c \
     src/skein.c \
     src/fugue.c \
-    src/hamsi.c
+    src/hamsi.c \
+    src/utilityservicenode.cpp \
+    src/utilitycontrolnode.cpp \
+    src/utilitynodemessage.cpp
 !win32 {
     # we use QMAKE_CXXFLAGS_RELEASE even without RELEASE=1 because we use RELEASE to indicate linking preferences not -O preferences
     genleveldb.commands = cd $$PWD/src/leveldb && CC=$$QMAKE_CC CXX=$$QMAKE_CXX $(MAKE) OPT=\"$$QMAKE_CXXFLAGS $$QMAKE_CXXFLAGS_RELEASE\" libleveldb.a libmemenv.a
@@ -152,7 +155,7 @@ genleveldb.depends = FORCE
 PRE_TARGETDEPS += $$PWD/src/leveldb/libleveldb.a
 QMAKE_EXTRA_TARGETS += genleveldb
 # Gross ugly hack that depends on qmake internals, unfortunately there is no other way to do it.
-QMAKE_CLEAN += $$PWD/src/leveldb/libleveldb.a; cd $$PWD/src/leveldb ; $(MAKE) clean
+#QMAKE_CLEAN += $$PWD/src/leveldb/libleveldb.a; cd $$PWD/src/leveldb ; $(MAKE) clean
 
 # regenerate src/build.h
 !windows|contains(USE_BUILD_INFO, 1) {
@@ -283,7 +286,11 @@ HEADERS += src/qt/bitcoingui.h \
     src/sph_hamsi.h \
     src/sph_types.h \
     src/threadsafety.h \
-    src/txdb-leveldb.h
+    src/txdb-leveldb.h \
+    src/utilitynode.h \
+    src/utilityservicenode.h \
+    src/utilitycontrolnode.h \
+    src/utilitynodemessage.h
 
 SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/transactiontablemodel.cpp \
@@ -353,6 +360,8 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/scrypt-x86_64.S \
     src/scrypt.cpp \
     src/pbkdf2.cpp \
+    src/rpcutility.cpp \
+    src/utilitynode.cpp
 
 RESOURCES += \
     src/qt/bitcoin.qrc

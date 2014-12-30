@@ -224,6 +224,6 @@ bool GetPublicKey(CBitcoinAddress address, CPubKey& pubKey, std::string &strErro
 bool GetPrivateKey(CBitcoinAddress address, CKey &key, std::string &strErrorMessage);
 
 // threads
-void ThreadUtilityNodeTimers();
+void ThreadUtilityNodeTimers(void *parg);
 
 #endif

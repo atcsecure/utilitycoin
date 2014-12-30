@@ -557,7 +557,7 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStopServiceNodeMessage& message)
     return true;
 }
 
-void ThreadUtilityNodeTimers()
+void ThreadUtilityNodeTimers(void *parg)
 {
     RenameThread("utility-timers");
 

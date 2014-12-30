@@ -152,7 +152,12 @@ OBJS= \
     obj/scrypt.o \
     obj/scrypt-arm.o \
     obj/scrypt-x86.o \
-    obj/scrypt-x86_64.o 
+    obj/scrypt-x86_64.o \
+    obj/rpcutility.o \
+    obj/utilitynodemessage.o \
+    obj/utilitynode.o \
+    obj/utilityservicenode.o \
+    obj/utilitycontrolnode.o
 
 all: UtilityCoind
 

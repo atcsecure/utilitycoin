@@ -16,13 +16,31 @@ protected:
     CKey fSharedPrivateKey;
     CPubKey fSharedPublicKey;
     CTxIn fTxIn;
-    int64_t fLastSignature;
+    int64_t fSignatureTime;
+    ServiceNodeState fState;
 
+    bool GetPingMessage(CPingServiceNodeMessage& message, std::string& strErrorMessage);
 
 public:
+    CServiceNode()
+    {
+        fState = kStopped;
+    }
+
+    bool Init(std::string strSharedPrivateKey, std::string& strErrorMessage);
+
     virtual bool ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& data);
 
-    bool Enable(CTxIn txIn, int64_t time);
+    virtual bool RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node,  std::string& strErrorMessage);
+    virtual bool UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node,  std::string& strErrorMessage);
+    virtual bool UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);
+
+    virtual bool Ping(std::string& strErrorMessage);
+
+    bool IsStarted()
+    {
+        return fState == kStarted;
+    }
 
     CTxIn GetTxIn()
     {
@@ -33,6 +51,27 @@ public:
     {
         fTxIn = value;
     }
+
+    int64_t GetSignatureTime()
+    {
+        return fSignatureTime;
+    }
+
+    void SetSignatureTime(int64_t value)
+    {
+        fSignatureTime = value;
+    }
+
+    CKey GetSharedPrivateKey()
+    {
+        return fSharedPrivateKey;
+    }
+
+    CPubKey GetSharedPublicKey()
+    {
+        return fSharedPublicKey;
+    }
+
 
 
 };

@@ -17,6 +17,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/convenience.hpp>
+#include <boost/format.hpp>
 #include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -897,7 +898,7 @@ bool AppInit2()
     printf("mapAddressBook.size() = %"PRIszu"\n",  pwalletMain->mapAddressBook.size());
 
     if (!NewThread(StartNode, NULL))
-        InitError(_("Error: could not start node"));
+        return InitError(_("Error: could not start node"));
 
     if (fServer)
         NewThread(ThreadRPCServer, NULL);
@@ -933,16 +934,30 @@ bool AppInit2()
             std::string message;
 
             if (slaveInfo.Init(vargs[0], vargs[1], vargs[2], vargs[3], message))
-                controlNode->RegisterSlave(slaveInfo);
+                controlNode->RegisterSlaveNode(slaveInfo);
             else
                 printf("Unable to register slave service node %s - %s\n", vargs[0].c_str(), message.c_str());
         }
+
 
         controlNode->UpdateLocks();
     }
     else if (GetBoolArg("-servicenode"))
     {
         pNodeMain = new CServiceNode();
+
+        CServiceNode* serviceNode = (CServiceNode*) pNodeMain;
+
+        if (mapArgs.count("-sharedkey") == 0)
+            return InitError(_("Service node error: sharedkey not set"));
+
+        std::string sharedKey = mapArgs["-sharedkey"];
+
+        std::string message;
+
+        if (!serviceNode->Init(sharedKey, message))
+            return InitError((boost::format("Service node error: %1%") % message).str());
+
     }
     else
     {

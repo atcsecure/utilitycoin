@@ -31,13 +31,13 @@ json_spirit::Value generatesharedkey(const json_spirit::Array& params, bool fHel
 
 std::string startservicenode(CControlNode* node, std::string alias)
 {
-    if (!node->HasSlave(alias))
+    if (!node->HasSlaveNode(alias))
         return (boost::format("Service node %1% not found\n") % alias).str();
 
     std::string strErrorMessage ;
 
 
-    if (node->StartSlave(alias, strErrorMessage))
+    if (node->StartSlaveNode(alias, strErrorMessage))
         return (boost::format("Service node %1% succesfully started\n") % alias).str();
     else
         return (boost::format("Service node %1% failed to start - %2%\n") % alias % strErrorMessage).str();
@@ -45,12 +45,12 @@ std::string startservicenode(CControlNode* node, std::string alias)
 
 std::string stopservicenode(CControlNode* node, std::string alias)
 {
-    if (!node->HasSlave(alias))
+    if (!node->HasSlaveNode(alias))
         return (boost::format("Service node %1% not found\n") % alias).str();
 
     std::string strErrorMessage;
 
-    if (node->StopSlave(alias, strErrorMessage))
+    if (node->StopSlaveNode(alias, strErrorMessage))
         return (boost::format("Service node %1% succesfully stopped") % alias).str();
     else
         return (boost::format("Service node %1% failed to stop - %2%\n") % alias % strErrorMessage).str();
@@ -150,4 +150,35 @@ json_spirit::Value stopservicenodes(const json_spirit::Array& params, bool fHelp
     }
 }
 
+json_spirit::Value listservicenodes(const json_spirit::Array& params, bool fHelp)
+{
+    if (fHelp)
+        throw std::runtime_error(
+                "listservicenodes [extensive = 0] \n"
+                "Lists known service nodes ");
+
+    // check if the wallet is syncing
+    if (IsInitialBlockDownload())
+        return "Initial block download in progress";
+
+    std::string result;
+
+    bool extensive = false;
+
+    if (params.size() > 0)
+        extensive = params[0].get_bool();
+
+    BOOST_FOREACH(CServiceNodeInfo node, pNodeMain->GetServiceNodes())
+        result += (boost::format("%1%\n") % (node.ToString(extensive))).str();
+
+    return result;
+}
+
+json_spirit::Value test(const json_spirit::Array& params, bool fHelp)
+{
+    if (fHelp)
+        throw std::runtime_error("");
+
+    return pNodeMain->Test();
+}
 

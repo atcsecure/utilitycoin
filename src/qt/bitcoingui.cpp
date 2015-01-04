@@ -79,9 +79,30 @@ BitcoinGUI::BitcoinGUI(QWidget *parent):
 {
     resize(850, 550);
     setWindowTitle(tr("UtilityCoin") + " - " + tr("Wallet"));
+
+//    QString stylesheet = "";
+
+//    stylesheet.append("QMainWindow");
+//    stylesheet.append("  {");
+//    stylesheet.append("    background-image: url(:/images/bg);");
+//    stylesheet.append("  }");
+//    stylesheet.append("QWidget");
+//    stylesheet.append("  {");
+//    //stylesheet.append("    background-color: yellow;");
+//    //stylesheet.append("    background-image: url(:/images/bg);");
+//    stylesheet.append("}");
+//    stylesheet.append("QMenuBar");
+//    stylesheet.append("  {");
+//    stylesheet.append("    background-color: yellow;");
+//    stylesheet.append("    opacity: 0;");
+//    stylesheet.append("  }");
+
+
+//    qApp->setStyleSheet(stylesheet);
+
 #ifndef Q_OS_MAC
-    qApp->setWindowIcon(QIcon(":icons/bitcoin"));
-    setWindowIcon(QIcon(":icons/bitcoin"));
+    qApp->setWindowIcon(QIcon(":icons/windowicon"));
+    setWindowIcon(QIcon(":icons/windowicon"));
 #else
     setUnifiedTitleAndToolBarOnMac(true);
     QApplication::setAttribute(Qt::AA_DontShowIconsInMenus);
@@ -256,7 +277,7 @@ void BitcoinGUI::createActions()
     quitAction->setToolTip(tr("Quit application"));
     quitAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Q));
     quitAction->setMenuRole(QAction::QuitRole);
-    aboutAction = new QAction(QIcon(":/icons/bitcoin"), tr("&About UtilityCoin"), this);
+    aboutAction = new QAction(QIcon(":/icons/about"), tr("&About UtilityCoin"), this);
     aboutAction->setToolTip(tr("Show information about UtilityCoin"));
     aboutAction->setMenuRole(QAction::AboutRole);
     aboutQtAction = new QAction(QIcon(":/trolltech/qmessagebox/images/qtlogo-64.png"), tr("About &Qt"), this);
@@ -265,7 +286,7 @@ void BitcoinGUI::createActions()
     optionsAction = new QAction(QIcon(":/icons/options"), tr("&Options..."), this);
     optionsAction->setToolTip(tr("Modify configuration options for UtilityCoin"));
     optionsAction->setMenuRole(QAction::PreferencesRole);
-    toggleHideAction = new QAction(QIcon(":/icons/bitcoin"), tr("&Show / Hide"), this);
+    toggleHideAction = new QAction(QIcon(":/icons/showhide"), tr("&Show / Hide"), this);
     encryptWalletAction = new QAction(QIcon(":/icons/lock_closed"), tr("&Encrypt Wallet..."), this);
     encryptWalletAction->setToolTip(tr("Encrypt or decrypt wallet"));
     encryptWalletAction->setCheckable(true);
@@ -308,6 +329,8 @@ void BitcoinGUI::createMenuBar()
     // Get the main window's menu bar on other platforms
     appMenuBar = menuBar();
 #endif
+
+
 
     // Configure the menus
     QMenu *file = appMenuBar->addMenu(tr("&File"));
@@ -358,19 +381,19 @@ void BitcoinGUI::setClientModel(ClientModel *clientModel)
         {
             setWindowTitle(windowTitle() + QString(" ") + tr("[testnet]"));
 #ifndef Q_OS_MAC
-            qApp->setWindowIcon(QIcon(":icons/bitcoin_testnet"));
-            setWindowIcon(QIcon(":icons/bitcoin_testnet"));
+            qApp->setWindowIcon(QIcon(":icons/windowicon_testnet"));
+            setWindowIcon(QIcon(":icons/windowicon_testnet"));
 #else
-            MacDockIconHandler::instance()->setIcon(QIcon(":icons/bitcoin_testnet"));
+            MacDockIconHandler::instance()->setIcon(QIcon(":icons/windowicon_testnet"));
 #endif
             if(trayIcon)
             {
                 trayIcon->setToolTip(tr("UtilityCoin client") + QString(" ") + tr("[testnet]"));
                 trayIcon->setIcon(QIcon(":/icons/toolbar_testnet"));
-                toggleHideAction->setIcon(QIcon(":/icons/toolbar_testnet"));
+                toggleHideAction->setIcon(QIcon(":/icons/showhide_testnet"));
             }
 
-            aboutAction->setIcon(QIcon(":/icons/toolbar_testnet"));
+            aboutAction->setIcon(QIcon(":/icons/about_testnet"));
         }
 
         // Keep up to date with client
@@ -852,7 +875,11 @@ void BitcoinGUI::encryptWallet(bool status)
 
 void BitcoinGUI::backupWallet()
 {
+#if QT_VERSION >= 0x050000
+    QString saveDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+#else
     QString saveDir = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation);
+#endif
     QString filename = QFileDialog::getSaveFileName(this, tr("Backup Wallet"), saveDir, tr("Wallet Data (*.dat)"));
     if(!filename.isEmpty()) {
         if(!walletModel->backupWallet(filename)) {

@@ -17,23 +17,19 @@ protected:
     CBitcoinAddress fWalletAddress;
     CKey fSharedPrivateKey;
 
-    bool GetNodeMessage(CNodeMessage& message, std::string& strErrorMessage);
-
 public:
     CSlaveNodeInfo();
 
     bool Init(std::string strAlias, std::string strWalletAddress, std::string strSharedPrivatekey, std::string strInetAddress, std::string &strErrorMessage);
 
     virtual bool IsValid();
-    bool IsStarted();
 
     virtual bool Check(std::string& strErrorMessage);
-    virtual bool Update(std::string& strErrorMessage);
 
     bool GetStartMessage(CStartServiceNodeMessage& message, std::string& strErrorMessage);
     bool GetStopMessage(CStopServiceNodeMessage& message, std::string& strErrorMessage);
 
-    bool UpdateWalletPublicKey(std::string strErrorMessage);
+    bool UpdateWalletPublicKey(std::string &strErrorMessage);
 
     bool UpdateTxIn(std::string& strErrorMessage);
     bool UpdateTxIn(std::vector<COutput> vOutput, std::string& strErrorMessage);
@@ -60,25 +56,34 @@ public:
 class CControlNode: public CUtilityNode
 {
 protected:
-    std::map<std::string, CSlaveNodeInfo> fSlaveNodes;
-    std::vector<std::string> fSlaveAliases;
+    std::vector<CSlaveNodeInfo> fSlaveNodes;
 
 public:
+    virtual std::string Test();
+
     virtual bool ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& data);
 
     virtual void UpdateLocks();
 
+    virtual bool RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage);
+    virtual bool UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node, std::string& strErrorMessage);
+    virtual bool UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);
+
     std::string GenerateSharedKey();
 
-    bool HasSlave(std::string alias);
+    bool HasSlaveNode(std::string alias);
+    bool HasSlaveNode(CPubKey sharedPublicKey);
+
+    CSlaveNodeInfo* GetSlaveNode(std::string alias);
+    CSlaveNodeInfo* GetSlaveNode(CPubKey sharedPublicKey);
 
     std::vector<std::string> GetSlaveAliases();
 
-    void RegisterSlave(CSlaveNodeInfo slave);
-    void UnregisterSlave(std::string alias);
+    void RegisterSlaveNode(CSlaveNodeInfo slave);
+    void UnregisterSlaveNode(std::string alias);
 
-    bool StartSlave(std::string alias, std::string& strErrorMessage);
-    bool StopSlave(std::string alias, std::string& strErrorMessage);
+    bool StartSlaveNode(std::string alias, std::string& strErrorMessage);
+    bool StopSlaveNode(std::string alias, std::string& strErrorMessage);
 
     bool GetMessageSignature(CSlaveNodeInfo slave, std::string strMessage, std::vector<unsigned char>& vsig,  std::string& strErrorMessage);
 };

@@ -11,6 +11,16 @@ const char UTILITY_MESSAGE_PINGSERVICENODE[]      = "snping";
 const char UTILITY_MESSAGE_STARTSERVICENODE[]     = "snstrt";
 const char UTILITY_MESSAGE_STOPSERVICENODE[]      = "snstop";
 
+bool IsGetServiceNodeInfoMessage(CNodeMessage* message)
+{
+    return (typeid(*message) == typeid(CGetServiceNodeInfoMessage));
+}
+
+bool IsGetServiceNodeListMessage(CNodeMessage* message)
+{
+    return (typeid(*message) == typeid(CGetServiceNodeListMessage));
+}
+
 bool SignMessage(CBitcoinAddress address, std::string strMessage, std::vector<unsigned char>& vSignature, std::string& strErrorMessage)
 {
     if(!CheckWalletLocked(strErrorMessage))
@@ -59,6 +69,7 @@ bool VerifyMessage(CKeyID keyID, std::string strMessage, std::vector<unsigned ch
     ss << strMessage;
 
     CKey key;
+
     if (!key.SetCompactSignature(Hash(ss.begin(), ss.end()), vSignature))
     {
         strErrorMessage = "Signature invalid";
@@ -80,12 +91,17 @@ bool VerifyMessage(CKeyID keyID, std::string strMessage, std::vector<unsigned ch
 
 
 
-bool CSignedNodeMessage::Sign(CBitcoinAddress address, std::string strErrorMessage)
+bool CSignedNodeMessage::Sign(CKey key, std::string &strErrorMessage)
+{
+    return SignMessage(key, GetMessageString(), fSignature, strErrorMessage);
+}
+
+bool CSignedNodeMessage::Sign(CBitcoinAddress address, std::string& strErrorMessage)
 {
     return SignMessage(address, GetMessageString(), fSignature, strErrorMessage);
 }
 
-bool CSignedNodeMessage::Verify(CPubKey pubKey, std::string strErrorMessage)
+bool CSignedNodeMessage::Verify(CPubKey pubKey, std::string& strErrorMessage)
 {
     return VerifyMessage(pubKey.GetID(), GetMessageString(), fSignature, strErrorMessage);
 }
@@ -139,6 +155,7 @@ void CGetServiceNodeListMessage::Relay(CNode *destination)
 
 CPingServiceNodeMessage::CPingServiceNodeMessage(CDataStream& data)
 {
+    data >> fTime >> fTxIn >> fInetAddress >> fSharedPublicKey >> fSignature;
 }
 
 bool CPingServiceNodeMessage::IsValid()
@@ -154,9 +171,11 @@ void CPingServiceNodeMessage::Relay(CNode *destination)
     destination->PushMessage
         (
             UTILITY_MESSAGE_PINGSERVICENODE,
+            fTime,
             fTxIn,
-            fSignature,
-            fTime
+            fInetAddress,
+            fSharedPublicKey,
+            fSignature
         );
 }
 
@@ -164,8 +183,10 @@ std::string CPingServiceNodeMessage::GetMessageString()
 {
     return
         UTILITY_MESSAGE_PINGSERVICENODE +
+        boost::lexical_cast<std::string>(fTime) +
+        fTxIn.ToString() +
         fInetAddress.ToString() +
-        boost::lexical_cast<std::string>(fTime);
+        fSharedPublicKey.ToString();
 }
 
 
@@ -175,7 +196,7 @@ std::string CPingServiceNodeMessage::GetMessageString()
 
 CStartServiceNodeMessage::CStartServiceNodeMessage(CDataStream& data)
 {
-    data >> fTxIn >> fInetAddress >> fSignature >> fTime >> fWalletPublicKey >> fSharedPublicKey >> fCount >> fCurrent;
+    data >> fTime >> fTxIn >> fInetAddress >> fWalletPublicKey >> fSharedPublicKey >> fServiceNodeCount >> fServiceNodeIndex >> fSignature;
 }
 
 
@@ -199,14 +220,14 @@ void CStartServiceNodeMessage::Relay(CNode *destination)
     destination->PushMessage
         (
             UTILITY_MESSAGE_STARTSERVICENODE,
+            fTime,
             fTxIn,
             fInetAddress,
-            fSignature,
-            fTime,
             fWalletPublicKey,
             fSharedPublicKey,
-            fCount,
-            fCurrent
+            fServiceNodeCount,
+            fServiceNodeIndex,
+            fSignature
         );
 }
 
@@ -214,8 +235,9 @@ std::string CStartServiceNodeMessage::GetMessageString()
 {
     return
         UTILITY_MESSAGE_STARTSERVICENODE +
-        fInetAddress.ToString() +
         boost::lexical_cast<std::string>(fTime) +
+        fTxIn.ToString() +
+        fInetAddress.ToString() +
         fWalletPublicKey.ToString() +
         fSharedPublicKey.ToString();
 }
@@ -226,7 +248,7 @@ std::string CStartServiceNodeMessage::GetMessageString()
 
 CStopServiceNodeMessage::CStopServiceNodeMessage(CDataStream& data)
 {
-    data >> fTxIn >> fInetAddress >> fSignature >> fTime;
+    data >> fTime >> fTxIn >> fInetAddress >> fSharedPublicKey >> fSignature;
 }
 
 bool CStopServiceNodeMessage::IsValid()
@@ -242,10 +264,11 @@ void CStopServiceNodeMessage::Relay(CNode *destination)
     destination->PushMessage
         (
             UTILITY_MESSAGE_STOPSERVICENODE,
+            fTime,
             fTxIn,
             fInetAddress,
-            fSignature,
-            fTime
+            fSharedPublicKey,
+            fSignature
         );
 }
 
@@ -253,6 +276,8 @@ std::string CStopServiceNodeMessage::GetMessageString()
 {
     return
         UTILITY_MESSAGE_STOPSERVICENODE +
+        boost::lexical_cast<std::string>(fTime) +
+        fTxIn.ToString() +
         fInetAddress.ToString() +
-        boost::lexical_cast<std::string>(fTime);
+        fSharedPublicKey.ToString();
 }

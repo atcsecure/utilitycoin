@@ -222,5 +222,7 @@ extern json_spirit::Value getcheckpoint(const json_spirit::Array& params, bool f
 extern json_spirit::Value generatesharedkey(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value startservicenodes(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value stopservicenodes(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value listservicenodes(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value test(const json_spirit::Array& params, bool fHelp);
 
 #endif

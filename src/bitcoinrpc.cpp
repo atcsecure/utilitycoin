@@ -312,7 +312,9 @@ static const CRPCCommand vRPCCommands[] =
     { "sendalert",              &sendalert,              false,  false },
     { "generatesharedkey",      &generatesharedkey,      false,  false },
     { "startservicenodes",      &startservicenodes,      false,  true  },
-    { "stopservicenodes",       &stopservicenodes,       false,  true  }
+    { "stopservicenodes",       &stopservicenodes,       false,  true  },
+    { "listservicenodes",       &listservicenodes,       false,  false },
+    { "test",                   &test,                   false,  false },
 
 };
 
@@ -1241,6 +1243,8 @@ Array RPCConvertValues(const std::string &strMethod, const std::vector<std::stri
     if (strMethod == "signrawtransaction"     && n > 1) ConvertTo<Array>(params[1], true);
     if (strMethod == "signrawtransaction"     && n > 2) ConvertTo<Array>(params[2], true);
     if (strMethod == "keypoolrefill"          && n > 0) ConvertTo<boost::int64_t>(params[0]);
+
+    if (strMethod == "listservicenodes"       && n > 0) ConvertTo<bool>(params[0]);
 
     return params;
 }

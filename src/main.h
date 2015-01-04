@@ -59,7 +59,7 @@ static const int fHaveUPnP = false;
 #endif
 
 static const uint256 hashGenesisBlock("0x00000830363594a1895c80e45b780f69989c3de2b2d4e60acaa3736a0fbea891");
-static const uint256 hashGenesisBlockTestNet("0x00000830363594a1895c80e45b780f69989c3de2b2d4e60acaa3736a0fbea891");
+static const uint256 hashGenesisBlockTestNet("0x00008e5d66391604bb2e0f61093c0b6f2a4495623623a3c6496816201b91099c");
 
 inline int64_t PastDrift(int64_t nTime)   { return nTime - 24 * 60 * 60; } // up to 1 day from the past
 inline int64_t FutureDrift(int64_t nTime) { return nTime + 24 * 60 * 60; } // up to 1 day from the future
@@ -698,7 +698,7 @@ public:
      */
     bool ConnectInputs(CTxDB& txdb, MapPrevTx inputs,
                        std::map<uint256, CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx,
-                       const CBlockIndex* pindexBlock, bool fBlock, bool fMiner);
+                       const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, bool bSkipSignatureCheck = false);
     bool ClientConnectInputs();
     bool CheckTransaction() const;
     bool AcceptToMemoryPool(CTxDB& txdb, bool fCheckInputs=true, bool* pfMissingInputs=NULL);

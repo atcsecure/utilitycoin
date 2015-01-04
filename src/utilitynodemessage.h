@@ -8,6 +8,7 @@
 
 #include "wallet.h"
 #include "main.h"
+#include "util.h"
 
 class CUtilityNode;
 
@@ -18,29 +19,12 @@ extern const char UTILITY_MESSAGE_STARTSERVICENODE[];
 extern const char UTILITY_MESSAGE_STOPSERVICENODE[];
 
 
-bool SignMessage(CBitcoinAddress address, std::string strMessage, std::vector<unsigned char> &vSignature, std::string &strErrorMessage);
-bool SignMessage(CKey key, std::string strMessage, std::vector<unsigned char>& vSignature, std::string &strErrorMessage);
-bool VerifyMessage(CBitcoinAddress address, std::string strMessage, std::vector<unsigned char> vSignature, std::string &strErrorMessage);
-bool VerifyMessage(CKeyID keyID, std::string strMessage, std::vector<unsigned char> vSignature, std::string &strErrorMessage);
-
-// abstract
 class CNodeMessage
 {
 protected:
-    std::vector<unsigned char> fSignature;
     int64_t fTime;
 
-
 public:
-    std::vector<unsigned char> GetSignature()
-    {
-        return fSignature;
-    }
-
-    void SetSignature(std::vector<unsigned char>& vSignature)
-    {
-        fSignature = vSignature;
-    }
 
     int64_t GetTime()
     {
@@ -52,21 +36,51 @@ public:
         fTime = value;
     }
 
-    virtual bool IsValid() = 0;
-    virtual void Relay(CNode* destination) = 0;
+    virtual bool IsValid()
+    {
+        return true;
+    }
+
+    virtual void Relay(CNode* destination)
+    {
+    }
 };
 
 // abstract
 class CSignedNodeMessage: public CNodeMessage
 {
+protected:
+    std::vector<unsigned char> fSignature;
+
 public:
-    virtual bool IsValid() = 0;
-    virtual void Relay(CNode* destination) = 0;
-    virtual std::string GetMessageString() = 0;
+    virtual bool IsValid()
+    {
+        return true;
+    }
 
+    virtual void Relay(CNode* destination)
+    {
+    }
 
-    bool Sign(CBitcoinAddress address, std::string strErrorMessage);
-    bool Verify(CPubKey pubKey, std::string strErrorMessage);
+    virtual std::string GetMessageString()
+    {
+        return "";
+    }
+
+    bool Sign(CKey key, std::string& strErrorMessage);
+    bool Sign(CBitcoinAddress address, std::string &strErrorMessage);
+    bool Verify(CPubKey pubKey, std::string& strErrorMessage);
+
+    std::vector<unsigned char> GetSignature()
+    {
+        return fSignature;
+    }
+
+    void SetSignature(std::vector<unsigned char>& vSignature)
+    {
+        fSignature = vSignature;
+    }
+
 };
 
 class CGetServiceNodeInfoMessage: public CNodeMessage
@@ -108,6 +122,7 @@ class CPingServiceNodeMessage: public CSignedNodeMessage
 protected:
     CTxIn fTxIn;
     CAddress fInetAddress;
+    CPubKey fSharedPublicKey;
 
 public:
     CPingServiceNodeMessage() {}
@@ -126,6 +141,16 @@ public:
     {
         fTxIn = value;
     }
+
+    CPubKey GetSharedPublicKey()
+    {
+        return fSharedPublicKey;
+    }
+
+    void SetSharedPublicKey(CPubKey value)
+    {
+        fSharedPublicKey = value;
+    }
 };
 
 class CStartServiceNodeMessage: public CSignedNodeMessage
@@ -137,8 +162,8 @@ protected:
     CPubKey fWalletPublicKey;
     CPubKey fSharedPublicKey;
 
-    int fCount;
-    int fCurrent;
+    int fServiceNodeCount;
+    int fServiceNodeIndex;
 
 public:
     CStartServiceNodeMessage(){}
@@ -188,24 +213,24 @@ public:
         fSharedPublicKey = value;
     }
 
-    int GetCount()
+    int GetServiceNodeCount()
     {
-        return fCount;
+        return fServiceNodeCount;
     }
 
-    void SetCount(int value)
+    void SetServiceNodeCount(int value)
     {
-        fCount = value;
+        fServiceNodeCount = value;
     }
 
-    int GetCurrent()
+    int GetServiceNodeIndex()
     {
-        return fCurrent;
+        return fServiceNodeIndex;
     }
 
-    void SetCurrent(int value)
+    void SetServiceNodeIndex(int value)
     {
-        fCurrent = value;
+        fServiceNodeIndex = value;
     }
 
 };
@@ -215,6 +240,8 @@ class CStopServiceNodeMessage: public CSignedNodeMessage
 protected:
     CAddress fInetAddress;
     CTxIn fTxIn;
+    CPubKey fWalletPublicKey;
+    CPubKey fSharedPublicKey;
 
 public:
     CStopServiceNodeMessage() {}
@@ -243,7 +270,35 @@ public:
     {
         fTxIn = value;
     }
+
+    CPubKey GetWalletPublicKey()
+    {
+        return fWalletPublicKey;
+    }
+
+    void SetWalletPublicKey(CPubKey value)
+    {
+        fWalletPublicKey = value;
+    }
+
+    CPubKey GetSharedPublicKey()
+    {
+        return fSharedPublicKey;
+    }
+
+    void SetSharedPublicKey(CPubKey value)
+    {
+        fSharedPublicKey = value;
+    }
+
 };
+
+bool IsGetServiceNodeInfoMessage(CNodeMessage* message);
+bool IsGetServiceNodeListMessage(CNodeMessage* message);
+bool SignMessage(CBitcoinAddress address, std::string strMessage, std::vector<unsigned char> &vSignature, std::string &strErrorMessage);
+bool SignMessage(CKey key, std::string strMessage, std::vector<unsigned char>& vSignature, std::string &strErrorMessage);
+bool VerifyMessage(CBitcoinAddress address, std::string strMessage, std::vector<unsigned char> vSignature, std::string &strErrorMessage);
+bool VerifyMessage(CKeyID keyID, std::string strMessage, std::vector<unsigned char> vSignature, std::string &strErrorMessage);
 
 
 #endif // UTILITYNODEMESSAGE_H

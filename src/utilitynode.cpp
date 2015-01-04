@@ -32,7 +32,7 @@ bool CheckWalletLocked(std::string &strErrorMessage)
 }
 
 // check if the wallet is syncing
-bool CheckInitialBlockDownloadFinished(std::string strErrorMessage)
+bool CheckInitialBlockDownloadFinished(std::string& strErrorMessage)
 {
     if (IsInitialBlockDownload())
     {
@@ -44,7 +44,7 @@ bool CheckInitialBlockDownloadFinished(std::string strErrorMessage)
     return true;
 }
 
-bool CheckPublicKey(CPubKey key, std::string strErrorMessage)
+bool CheckPublicKey(CPubKey key, std::string& strErrorMessage)
 {
     CScript script;
 
@@ -53,6 +53,18 @@ bool CheckPublicKey(CPubKey key, std::string strErrorMessage)
     if (script.size() != 25)
     {
         strErrorMessage = "Wrong size";
+        return false;
+    }
+
+    return true;
+}
+
+bool CheckSignatureTime(int64_t time, std::string& strErrorMessage)
+{
+    if (time > GetAdjustedTime() + 60 * 60)
+    {
+        strErrorMessage = "Signature too far into the future";
+
         return false;
     }
 
@@ -104,13 +116,12 @@ bool CheckTxInAssociation(CTxIn txIn, CPubKey pubKey, std::string &strErrorMessa
     return false;
 }
 
-
 bool CheckTxInUnspent(CTxIn txIn, std::string& strErrorMessage)
 {
     // Check for conflicts with in-memory transactions
     if (mempool.mapNextTx.count(txIn.prevout))
     {
-        strErrorMessage = "Tx in used in memory";
+        strErrorMessage = "Tx is used in memory";
 
         return false;
     }
@@ -139,25 +150,57 @@ bool CheckTxInUnspent(CTxIn txIn, std::string& strErrorMessage)
         return false;
     }
 
-    //
-    //
-    // TODO check unspent
+    // Check against previous transactions
+    // This is done last to help prevent CPU exhaustion denial-of-service attacks.
+    if (!tx.ConnectInputs(txdb, mapInputs, mapUnused, CDiskTxPos(1,1,1), pindexBest, true, true, true))
+    {
+        strErrorMessage = "Unable to connect tx inputs";
 
-//    // Check against previous transactions
-//    // This is done last to help prevent CPU exhaustion denial-of-service attacks.
-//    if (!tx.ConnectInputs(txdb, mapInputs, mapUnused, CDiskTxPos(1,1,1), pindexBest, true, true))
-//    {
-//        strErrorMessage = "Unable to connect tx inputs";
-
-//        return false;
-//    }
+        return false;
+    }
 
     return true;
 }
 
 bool CheckTxInConfirmations(CTxIn txIn, int confirmations, std::string &strErrorMessage)
 {
-    // TODO
+    CTransaction tx;
+    uint256 hash;
+
+    if (!GetTransaction(txIn.prevout.hash, tx, hash))
+    {
+        strErrorMessage = "Transaction not found";
+
+        return false;
+    }
+
+    return true;
+}
+
+bool GetBitcoinAddress(CPubKey pubKey, CBitcoinAddress &address, std::string &strErrorMessage)
+{
+    if (!pubKey.IsValid())
+    {
+        strErrorMessage = "Invalid public key";
+
+        return false;
+    }
+
+    CScript script;
+
+    script.SetDestination(pubKey.GetID());
+
+    CTxDestination destination;
+
+    if (!ExtractDestination(script, destination))
+    {
+        strErrorMessage = "Unabled to extract destination";
+
+        return false;
+    }
+
+    address.Set(destination);
+
     return true;
 }
 
@@ -194,6 +237,38 @@ bool GetPrivateKey(CBitcoinAddress address, CKey& key, std::string& strErrorMess
     return true;
 }
 
+std::string GetReadableTimeSpan(int64_t time)
+{
+    std::string result;
+
+    if (time > 86400)
+        result += (boost::format("%1%d") % ((time / 86400) % 7)).str();
+
+    if (time > 3600)
+        result += (boost::format("%1%h") % ((time / 3600) % 24)).str();
+
+    if (time > 60)
+        result += (boost::format("%1%m") % ((time / 60) % 60)).str();
+
+    result += (boost::format("%1%s") % (time % 60)).str();
+
+    return result;
+}
+
+std::string GetServiceNodeStateString(ServiceNodeState state)
+{
+    switch (state)
+    {
+        case kStarted: return "Started"; break;
+        case kStopped: return "Stopped"; break;
+        case kProcessing: return "Processing"; break;
+    }
+
+    return "Undefined";
+}
+
+
+
 
 
 
@@ -201,9 +276,14 @@ bool GetPrivateKey(CBitcoinAddress address, CKey& key, std::string& strErrorMess
 
 CServiceNodeInfo::CServiceNodeInfo()
 {
+    fSignatureTime = 0;
+    fLastPing = 0;
+    fLastSeen = 0;
+    fLastStart = 0;
+    fLastStop = 0;
 }
 
-bool CServiceNodeInfo::Init(std::string strInetAddress, std::string strErrorMessage)
+bool CServiceNodeInfo::Init(std::string strInetAddress, std::string& strErrorMessage)
 {
     fInetAddress = CAddress(CService(strInetAddress));
 
@@ -215,11 +295,6 @@ bool CServiceNodeInfo::Init(std::string strInetAddress, std::string strErrorMess
     }
 
     return true;
-}
-
-bool CServiceNodeInfo::Update(CStartServiceNodeMessage& message, std::string strErrorMessage)
-{
-
 }
 
 bool CServiceNodeInfo::IsValid()
@@ -235,9 +310,26 @@ bool CServiceNodeInfo::Check(std::string &strErrorMessage)
     return true;
 }
 
-bool CServiceNodeInfo::Update(std::string &strErrorMessage)
+void CServiceNodeInfo::UpdateState()
 {
-    return true;
+    if (fState == kStarted)
+    {
+        if (!IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_EXPIRATION))
+        {
+            fState = kStopped;
+
+            return;
+        }
+
+        std::string strErrorMessage;
+
+        if (!CheckTxInUnspent(GetTxIn(), strErrorMessage))
+        {
+            fState = kStopped;
+
+            return;
+        }
+    }
 }
 
 bool CServiceNodeInfo::CheckInetAddressValid(std::string& strErrorMessage)
@@ -258,18 +350,84 @@ bool CServiceNodeInfo::Connect(std::string& strErrorMessage)
     return true;
 }
 
+bool CServiceNodeInfo::GetNodeMessage(CNodeMessage &message, std::string &strErrorMessage)
+{
+    message.SetTime(GetAdjustedTime());
+
+    return true;
+}
+
+bool CServiceNodeInfo::GetStartMessage(CStartServiceNodeMessage& message, int serviceNodeCount, int serviceNodeIndex, std::string& strErrorMessage)
+{
+    message.SetTime(GetSignatureTime());
+    message.SetInetAddress(fInetAddress);
+    message.SetTxIn(fTxIn);
+    message.SetWalletPublicKey(fWalletPublicKey);
+    message.SetSharedPublicKey(fSharedPublicKey);
+    message.SetServiceNodeCount(serviceNodeCount);
+    message.SetServiceNodeIndex(serviceNodeIndex);
+    message.SetSignature(fSignature);
+
+    return true;
+}
+
+std::string CServiceNodeInfo::ToString(bool extensive)
+{
+    std::string seperator = "; ";
+
+    std::string result;
+    std::string message;
+
+    result += GetInetAddress().ToString();
+    result += seperator;
+    result += GetStateString();
 
 
+    if (extensive)
+    {
+        result += "\n";
+
+        CBitcoinAddress address;
+
+        if (GetBitcoinAddress(GetWalletPublicKey(), address, message))
+            result += (boost::format("Address   : %1%") % address.ToString()).str();
+        else
+            result += "Address   : ?";
+        result += "\n";
+        result += (boost::format("Active    : %1%") % (GetLastSeen() > 0 ? GetReadableTimeSpan(GetLastSeen() - GetSignatureTime()) : "?")).str();
+        result += "\n";
+        result += (boost::format("Last seen : %1%") % (GetLastSeen() > 0 ? GetReadableTimeSpan(GetAdjustedTime() - GetLastSeen()) : "?")).str();
+        //result += GetTxIn().prevout.hash.ToString();
+        //result += seperator;
+        // TODO rank
+    }
+
+    return result;
+}
+
+
+
+
+
+
+
+
+
+std::string CUtilityNode::Test()
+{
+    return "finished";
+}
 
 bool CUtilityNode::ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& data)
 {
-    if (pfrom->nVersion < MIN_UTILITYNODE_PROTOVERSION) {
+    if (pfrom->nVersion < UTILITYNODE_MIN_PROTOVERSION)
+    {
         return false;
     }
 
-    if (REQ_UTILITYNODE_PROTOVERSION > 0)
+    if (UTILITYNODE_REQ_PROTOVERSION > 0)
     {
-        if (pfrom->nVersion != REQ_UTILITYNODE_PROTOVERSION)
+        if (pfrom->nVersion !=UTILITYNODE_REQ_PROTOVERSION)
             return false;
     }
 
@@ -359,43 +517,251 @@ std::vector<COutPoint> CUtilityNode::GetLockedOutPoints()
     return outs;
 }
 
-bool CUtilityNode::HasServiceNode(CServiceNodeInfo node)
-{
-    return HasServiceNode(node.GetTxIn());
-}
-
 bool CUtilityNode::HasServiceNode(CTxIn txIn)
 {
-    CServiceNodeInfo node;
-
-    return GetServiceNode(txIn, node);
+    return GetServiceNode(txIn) != NULL;
 }
 
-bool CUtilityNode::GetServiceNode(CTxIn txIn, CServiceNodeInfo& node)
+CServiceNodeInfo* CUtilityNode::GetServiceNode(CTxIn txIn)
 {
-    BOOST_FOREACH(CServiceNodeInfo nodeCompare, fServiceNodes)
+    for (int i = 0; i < fServiceNodes.size(); i++)
     {
-        if (nodeCompare.GetTxIn() == node.GetTxIn())
+        if (fServiceNodes[i].GetTxIn() == txIn)
         {
-            node = nodeCompare;
+            return &fServiceNodes[i];
+        }
+    }
+
+    return NULL;
+}
+
+int CUtilityNode::GetServiceNodeIndex(CServiceNodeInfo* node)
+{
+    for (int i = 0; i < fServiceNodes.size(); i++)
+    {
+        if (fServiceNodes[i].GetTxIn() == node->GetTxIn())
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+bool CUtilityNode::AddServiceNode(CServiceNodeInfo& node, std::string& strErrorMessage)
+{
+    if (HasServiceNode(node.GetTxIn()))
+    {
+        strErrorMessage = (boost::format("Input %1% is already associated to a service node") % node.GetTxIn().ToString()).str();
+
+        return false;
+    }
+
+    fServiceNodes.push_back(node);
+
+    return true;
+}
+
+bool CUtilityNode::DelServiceNode(CTxIn txIn, std::string &strErrorMessage)
+{
+    std::vector<CServiceNodeInfo>::iterator it;
+
+    for (it = fServiceNodes.begin(); it != fServiceNodes.end(); it++)
+    {
+        if ((*it).GetTxIn() == txIn)
+        {
+            fServiceNodes.erase(it);
 
             return true;
         }
     }
 
+    strErrorMessage = (boost::format("Input %1% is not associated to a service node") % txIn.ToString()).str();
+
     return false;
 }
 
-void CUtilityNode::UpdateServiceNodeList()
+bool CUtilityNode::RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage)
+{
+    printf("CUtilityNode::RegisterServiceNode: %s\n", message.GetInetAddress().ToString().c_str());
+
+    if (message.GetTime() < node.GetLastStart())
+    {
+        strErrorMessage = "newer start message already received";
+
+        return false;
+    }
+
+    if (message.GetTime() < node.GetLastStop())
+    {
+        strErrorMessage = "newer stop message already received";
+
+        return false;
+    }
+
+    if (HasServiceNode(node.GetTxIn()))
+    {
+        strErrorMessage = "service node already registered";
+
+        return false;
+    }
+
+    node.SetLastStart(message.GetTime());
+    node.SetInetAddress(message.GetInetAddress());
+    node.SetSignature(message.GetSignature());
+    node.SetSignatureTime(message.GetTime());
+    node.SetWalletPublicKey(message.GetWalletPublicKey());
+    node.SetSharedPublicKey(message.GetSharedPublicKey());
+    node.SetInetAddress(message.GetInetAddress());
+    node.SetTxIn(message.GetTxIn());
+    node.SetLastSeen(message.GetTime());
+    node.SetState(kStarted);
+
+    AddServiceNode(node, strErrorMessage);
+
+    return true;
+}
+
+bool CUtilityNode::UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo* node, std::string& strErrorMessage)
+{
+    printf("CUtilityNode::UpdateServiceNode: %s\n", message.GetInetAddress().ToString().c_str());
+
+    // check newer entries
+    if (message.GetTime() < node->GetLastStart())
+    {
+        strErrorMessage = "newer start message already received";
+
+        return false;
+    }
+
+    if (message.GetTime() < node->GetLastStop())
+    {
+        strErrorMessage = "newer stop message already received";
+
+        return false;
+    }
+
+    node->SetLastStart(message.GetTime());
+    node->SetSignature(message.GetSignature());
+    node->SetSignatureTime(message.GetTime());
+    node->SetWalletPublicKey(message.GetWalletPublicKey());
+    node->SetSharedPublicKey(message.GetSharedPublicKey());
+    node->SetInetAddress(message.GetInetAddress());
+    node->SetLastSeen(message.GetTime());
+    node->SetState(kStarted);
+
+    return true;
+}
+
+bool CUtilityNode::UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage)
+{
+    printf("CUtilityNode::UnregisterServiceNode: %s\n", message.GetInetAddress().ToString().c_str());
+
+    CServiceNodeInfo* node = GetServiceNode(message.GetTxIn());
+
+    if (node != NULL)
+    {
+
+        // check newer entries
+        if (message.GetTime() < node->GetLastStop())
+        {
+            strErrorMessage = "newer stop message already received";
+
+            return false;
+        }
+
+        if (message.GetTime() < node->GetLastStart())
+        {
+            strErrorMessage = "newer start message already received";
+
+            return false;
+        }
+
+        node->SetState(kStopped);
+        node->SetTimeStopped(GetAdjustedTime());
+    }
+    return true;
+}
+
+void CUtilityNode::SyncServiceNodeList()
 {
     if (IsInitialBlockDownload())
         return;
 
-    // do we still need to sync the whole list?
+    if (vNodes.size() == 0)
+        return;
 
-    //CGetServiceNodeListMessage message;
+    if (GetAdjustedTime() - fLastSyncServiceNodeList < 60 * 5)
+        return;
 
-    //RelayMessage(message);
+    if (fNumSyncServiceNodeListRequests > 3)
+        return;
+
+    fLastSyncServiceNodeList = GetAdjustedTime();
+    fNumSyncServiceNodeListRequests++;
+
+    LOCK(cs_vNodes);
+    BOOST_FOREACH(CNode* pnode, vNodes)
+    {
+        CGetServiceNodeListMessage message;
+
+        if (!HasRequestRecord(message, pnode->addr.ToString()))
+        {
+            printf("requesting service node list %s\n", pnode->addr.ToString().c_str());
+
+            message.Relay(pnode);
+
+            fRequests.push_back(CNodeMessageRecord(pnode->addr.ToString(), message, GetAdjustedTime()));
+        }
+    }
+}
+
+void CUtilityNode::UpdateServiceNodeList()
+{
+    std::vector<CServiceNodeInfo>::iterator it = fServiceNodes.begin();
+
+    while(it != fServiceNodes.end())
+    {
+        CServiceNodeInfo node = (*it);
+
+        node.UpdateState();
+
+        if (node.GetState() == kStopped && (GetAdjustedTime() - node.GetTimeStopped() > SERVICENODE_SECONDS_BETWEEN_REMOVAL))
+        {
+            printf("UpdateServiceNodeList: Inactive service node removed %s\n", node.GetInetAddress().ToString().c_str());
+
+            it = fServiceNodes.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+void CUtilityNode::CleanNodeMessageRecords()
+{
+    std::vector<CNodeMessageRecord>::iterator it = fRequests.begin();
+
+    while (it != fRequests.end())
+    {
+        CNodeMessageRecord record = (*it);
+        CNodeMessage message = record.GetNodeMessage();
+
+        // default time span of one hour
+        int span = 60 * 60;
+
+        if (IsGetServiceNodeInfoMessage(&message))
+            span = UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODEINFO;
+
+        if (IsGetServiceNodeListMessage(&message))
+            span = UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODELIST;
+
+        if (record.GetTime() < GetAdjustedTime() - span)
+            it = fRequests.erase(it);
+        else
+            it++;
+    }
 }
 
 void CUtilityNode::RelayMessage(CNodeMessage &message)
@@ -407,18 +773,205 @@ void CUtilityNode::RelayMessage(CNodeMessage &message)
     }
 }
 
+bool HasRecord(std::vector<CNodeMessageRecord> vrecords, CNodeMessage& message, std::string address)
+{
+    BOOST_FOREACH(CNodeMessageRecord record, vrecords)
+    {
+        if (address.size() > 0 && address != record.GetNodeAddress())
+            continue;
+
+        CNodeMessage messageCompare = record.GetNodeMessage();
+
+        if (IsGetServiceNodeInfoMessage(&messageCompare) && IsGetServiceNodeInfoMessage(&message))
+        {
+            if (((CGetServiceNodeInfoMessage*)&messageCompare)->GetTxIn() == ((CGetServiceNodeInfoMessage*)&message)->GetTxIn())
+                return true;
+        }
+
+        if (IsGetServiceNodeListMessage(&messageCompare) && IsGetServiceNodeListMessage(&message))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool CUtilityNode::HasRequestRecord(CNodeMessage& message, std::string address)
+{
+    return HasRecord(fRequests, message, address);
+}
+
+bool CUtilityNode::HasResponseRecord(CNodeMessage& message, std::string address)
+{
+    return HasRecord(fResponses, message, address);
+}
+
 bool CUtilityNode::HandleMessage(CNode* pfrom, CGetServiceNodeInfoMessage& message)
 {
+    // check if the wallet is syncing
+    if (IsInitialBlockDownload())
+        return false;
+
+    std::string strErrorMessage;
+
+    printf("GetServiceNodeListMessage - sending servicenode entry %s\n", message.GetTxIn().ToString().c_str());
+
+    int count = fServiceNodes.size();
+
+    CServiceNodeInfo* node = GetServiceNode(message.GetTxIn());
+
+    if (node != NULL)
+    {
+        int index = GetServiceNodeIndex(node);
+
+        node->UpdateState();
+
+        if (node->IsStarted())
+        {
+            CStartServiceNodeMessage startMessage;
+
+            if (!node->GetStartMessage(startMessage, count, index, strErrorMessage))
+            {
+                printf("GetServiceNodeListMessage - Unable to get start message, %s\n", strErrorMessage.c_str());
+
+                return false;
+            }
+
+            startMessage.Relay(pfrom);
+        }
+    }
+
     return true;
 }
 
 bool CUtilityNode::HandleMessage(CNode* pfrom, CGetServiceNodeListMessage& message)
 {
+    // check if the wallet is syncing
+    if (IsInitialBlockDownload())
+        return false;
+
+    std::string strErrorMessage;
+
+    // TODO handle node being restarted
+    if (HasResponseRecord(message, pfrom->addr.ToString()))
+    {
+        // should only ask for the list once
+        printf("GetServiceNodeListMessage - node %s already asked for the list\n", pfrom->addr.ToString().c_str());
+
+        // TODO bit soft for now as the node might be restarting
+        pfrom->Misbehaving(5);
+    }
+
+    // record response
+    fResponses.push_back(CNodeMessageRecord(pfrom->addr.ToString(), message, GetAdjustedTime()));
+
+    printf("GetServiceNodeListMessage - sending servicenode entries\n");
+
+    int count = fServiceNodes.size();
+    int index = 0;
+
+    BOOST_FOREACH(CServiceNodeInfo node, fServiceNodes)
+    {
+        if (node.IsStarted())
+        {
+            CStartServiceNodeMessage startMessage;
+
+            if (!node.GetStartMessage(startMessage, count, index, strErrorMessage))
+            {
+                printf("GetServiceNodeListMessage - Unable to get start message, %s\n", strErrorMessage.c_str());
+
+                continue;
+            }
+
+            startMessage.Relay(pfrom);
+        }
+
+        index++;
+    }
+
     return true;
 }
 
 bool CUtilityNode::HandleMessage(CNode* pfrom, CPingServiceNodeMessage& message)
 {
+    // check if the wallet is syncing
+    if (IsInitialBlockDownload())
+        return false;
+
+    std::string strErrorMessage;
+
+    if (!CheckSignatureTime(message.GetTime(), strErrorMessage))
+    {
+        printf("PingServiceNodeMessage - CheckSignatureTime - %s\n", strErrorMessage.c_str());
+
+        return false;
+    }
+
+    if (!CheckPublicKey(message.GetSharedPublicKey(), strErrorMessage))
+    {
+        printf("PingServiceNodeMessage - CheckWalletPublicKey - %s\n", strErrorMessage.c_str());
+
+        pfrom->Misbehaving(100);
+
+        return false;
+    }
+
+    if (!message.Verify(message.GetSharedPublicKey(), strErrorMessage))
+    {
+        printf("PingServiceNodeMessage - VerifyMessage - %s\n", strErrorMessage.c_str());
+
+        pfrom->Misbehaving(100);
+
+        return false;
+    }
+
+    CServiceNodeInfo* node = GetServiceNode(message.GetTxIn());
+
+    if (node != NULL)
+    {
+        if (message.GetTime() < node->GetLastPing())
+        {
+            printf("PingServiceNodeMessage - message older then earlier ping\n");
+
+            return false;
+        }
+
+        if (node->IsProcessing())
+            node->SetState(kStarted);
+
+        node->SetLastPing(message.GetTime());
+
+        if (!node->IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_UPDATES))
+        {
+            node->SetLastSeen(GetAdjustedTime());
+
+            RelayMessage(message);
+        }
+    }
+    else
+    {
+        printf("PingServiceNode - Service node not in our list, requesting info\n");
+
+        // not in the list, request start message if not recently requested
+        std::string address = pfrom->addr.ToString();
+
+        if (HasRequestRecord(message, address))
+        {
+            printf("PingServiceNode - Service node info already requested\n");
+
+            return false;
+        }
+
+        CGetServiceNodeInfoMessage requestMessage;
+
+        requestMessage.SetTime(GetAdjustedTime());
+        requestMessage.SetTxIn(message.GetTxIn());
+        requestMessage.Relay(pfrom);
+
+        fRequests.push_back(CNodeMessageRecord(address, requestMessage, GetAdjustedTime()));
+    }
+
     return true;
 }
 
@@ -429,6 +982,13 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
         return false;
 
     std::string strErrorMessage;
+
+    if (!CheckSignatureTime(message.GetTime(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - CheckSignatureTime - %s\n", strErrorMessage.c_str());
+
+        return false;
+    }
 
     if (!CheckPublicKey(message.GetWalletPublicKey(), strErrorMessage))
     {
@@ -450,7 +1010,7 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
 
     if (!message.Verify(message.GetWalletPublicKey(), strErrorMessage))
     {
-        printf("StartServiceNodeMessage - VerifyMessage - %s\n", strErrorMessage.c_str());
+        printf("StartServiceNodeMessage - Verify Message - %s\n", strErrorMessage.c_str());
 
         pfrom->Misbehaving(100);
 
@@ -480,37 +1040,29 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
         printf("StartServiceNodeMessage - CheckTxInUnspent - %s\n", strErrorMessage.c_str());
 
         // not necessarily misbehaving as the input may have just been spent
-        // TODO needs work!
+        // TODO needs DOS
         pfrom->Misbehaving(10);
 
         return false;
     }
 
-    CServiceNodeInfo node;
+    CServiceNodeInfo* node = GetServiceNode(message.GetTxIn());
 
-    if (GetServiceNode(message.GetTxIn(), node))
+    if (node != NULL)
     {
         // existing service node entry
-        if (message.GetCount() == -1 && !node.IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_UPDATES))
+        if (message.GetServiceNodeCount() == -1 && !node->IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_UPDATES))
         {
-            node.SetLastSeen(message.GetTime());
+            node->SetLastSeen(message.GetTime());
 
-            // check newer entry
-            if (node.GetLastSignature() < message.GetTime())
+            if (!UpdateServiceNode(message, node, strErrorMessage))
             {
-                printf("StartServiceNodeMessage - Updated - %s\n", message.GetInetAddress().ToString().c_str());
+                printf("StartServiceNodeMessage - UpdateServiceNode - %s\n", strErrorMessage.c_str());
 
-                node.SetLastSignature(message.GetTime());
-                node.SetWalletPublicKey(message.GetWalletPublicKey());
-                node.SetSharedPublicKey(message.GetSharedPublicKey());
-                node.SetInetAddress(message.GetInetAddress());
-
-                // are you talking about me?
-                if (IsServiceNode(this) && ((CServiceNode*)this)->GetTxIn() == message.GetTxIn())
-                    ((CServiceNode*)this)->Enable(message.GetTxIn(), message.GetTime());
-
-                RelayMessage(message);
+                return false;
             }
+
+            RelayMessage(message);
         }
     }
     else
@@ -525,41 +1077,115 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
             return false;
         }
 
-        // add the node to our list of service nodes
-        CServiceNodeInfo node;
+        CServiceNodeInfo newNode;
 
-        node.SetInetAddress(message.GetInetAddress());
-        node.SetLastSignature(message.GetTime());
-        node.SetWalletPublicKey(message.GetWalletPublicKey());
-        node.SetSharedPublicKey(message.GetSharedPublicKey());
-        node.SetInetAddress(message.GetInetAddress());
-        node.SetTxIn(message.GetTxIn());
-        node.SetLastSeen(message.GetTime());
+        if (!RegisterServiceNode(message, newNode, strErrorMessage))
+        {
+            printf("StartServiceNodeMessage - RegisterServiceNode - %s\n", strErrorMessage.c_str());
 
-        fServiceNodes.push_back(node);
+            return false;
+        }
 
         // add the node to the address manager
-        addrman.Add(node.GetInetAddress(), pfrom->addr, SERVICENODE_TIME_PENALTY);
+        addrman.Add(newNode.GetInetAddress(), pfrom->addr, SERVICENODE_TIME_PENALTY);
 
-        // is this me?
-        if (IsServiceNode(this) && ((CServiceNode*)this)->GetTxIn() == message.GetTxIn())
-            ((CServiceNode*)this)->Enable(message.GetTxIn(), message.GetTime());
-
-        if (message.GetCount() == -1)
+        if (message.GetServiceNodeCount() == -1)
             RelayMessage(message);
     }
 
+    // handled
     return true;
 }
 
 bool CUtilityNode::HandleMessage(CNode* pfrom, CStopServiceNodeMessage& message)
 {
+    // check if the wallet is syncing
+    if (IsInitialBlockDownload())
+        return false;
+
+    std::string strErrorMessage;
+
+    if (!CheckSignatureTime(message.GetTime(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - CheckSignatureTime - %s\n", strErrorMessage.c_str());
+
+        return false;
+    }
+
+    if (!CheckPublicKey(message.GetWalletPublicKey(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - CheckWalletPublicKey - %s\n", strErrorMessage.c_str());
+
+        pfrom->Misbehaving(100);
+
+        return false;
+    }
+
+    if (!CheckPublicKey(message.GetSharedPublicKey(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - CheckSharedPublicKey - %s\n", strErrorMessage.c_str());
+
+        pfrom->Misbehaving(100);
+
+        return false;
+    }
+
+    if (!message.Verify(message.GetWalletPublicKey(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - VerifyMessage - %s\n", strErrorMessage.c_str());
+
+        pfrom->Misbehaving(100);
+
+        return false;
+    }
+
+    if (!CheckServiceNodeInetAddressValid(message.GetInetAddress(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - CheckServiceNodeInetAddressValid - %s\n", strErrorMessage.c_str());
+
+        pfrom->Misbehaving(0);
+
+        return false;
+    }
+
+    if (!CheckTxInAssociation(message.GetTxIn(), message.GetWalletPublicKey(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - CheckVinAssociationWithPublicKey - %s\n", strErrorMessage.c_str());
+
+        pfrom->Misbehaving(100);
+
+        return false;
+    }
+
+    if (!CheckTxInUnspent(message.GetTxIn(), strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - CheckTxInUnspent - %s\n", strErrorMessage.c_str());
+
+        // not necessarily misbehaving as the input may have just been spent
+        // TODO needs DOS
+        pfrom->Misbehaving(10);
+
+        return false;
+    }
+
+    if (!UnregisterServiceNode(message, strErrorMessage))
+    {
+        printf("StopServiceNodeMessage - UnregisterServiceNode - %s\n", strErrorMessage.c_str());
+
+        return false;
+    }
+
+    RelayMessage(message);
+
+    // handled
     return true;
 }
 
-void ThreadUtilityNodeTimers(void *parg)
+void ThreadUtilityNodeTimers(void* parg)
 {
     RenameThread("utility-timers");
+
+    std::string strErrorMessage;
 
     unsigned int s = 0;
     while (true)
@@ -567,9 +1193,25 @@ void ThreadUtilityNodeTimers(void *parg)
         MilliSleep(1000);
 
         // every 20 seconds
-        if (s % 20)
+        if (s % 20 == 0)
+        {
+            pNodeMain->SyncServiceNodeList();
+        }
+
+        // every minute
+        if (s % 60 == 0)
         {
             pNodeMain->UpdateServiceNodeList();
+        }
+
+        // every 5 minutes
+        if (s % (5 * 60) == 0)
+        {
+            if (IsServiceNode(pNodeMain))
+            {
+                if (!((CServiceNode*)pNodeMain)->Ping(strErrorMessage))
+                    printf("ThreadUtilityNodeTimers: ServiceNode Ping: %s\n", strErrorMessage.c_str());
+            }
         }
 
         s++;

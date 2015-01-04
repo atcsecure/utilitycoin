@@ -39,15 +39,20 @@
         <file alias="debugwindow">res/icons/debugwindow.png</file>
         <file alias="staking_off">res/icons/staking_off.png</file>
         <file alias="staking_on">res/icons/staking_on.png</file>
-        <file alias="bitcoin">res/icons/bitcoin.png</file>
-        <file alias="bitcoin_testnet">res/icons/bitcoin_testnet.png</file>
-        <file alias="toolbar">res/icons/UtilityCoin-16.png</file>
-        <file alias="toolbar_testnet">res/icons/UtilityCoin-16.png</file>
+        <file alias="showhide">res/icons/utilitycoin_32x32.png</file>
+        <file alias="showhide_testnet">res/icons/utilitycoin_testnet_32x32.png</file>
+        <file alias="about">res/icons/utilitycoin_32x32.png</file>
+        <file alias="about_testnet">res/icons/utilitycoin_testnet_32x32.png</file>
+        <file alias="windowicon">res/icons/utilitycoin_256x256.png</file>
+        <file alias="windowicon_testnet">res/icons/utilitycoin_testnet_256x256.png</file>
+        <file alias="toolbar">res/icons/utilitycoin_32x32.png</file>
+        <file alias="toolbar_testnet">res/icons/utilitycoin_testnet_32x32.png</file>
     </qresource>
     <qresource prefix="/images">
-        <file alias="about">res/images/about.png</file>
-        <file alias="splash">res/images/splash.png</file>
-        <file alias="Wallet_Logo">res/images/Wallet_Logo.png</file>
+        <file alias="about">res/icons/utilitycoin_256x256.png</file>
+        <file alias="about_testnet">res/icons/utilitycoin_testnet_256x256.png</file>
+        <file alias="splash">res/icons/utilitycoin_256x256.png</file>
+        <file alias="splash_testnet">res/icons/utilitycoin_testnet_256x256.png</file>
     </qresource>
     <qresource prefix="/movies">
         <file alias="update_spinner">res/movies/update_spinner.mng</file>

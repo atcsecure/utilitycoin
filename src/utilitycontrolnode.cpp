@@ -9,6 +9,7 @@ CSlaveNodeInfo::CSlaveNodeInfo()
 {
 }
 
+
 bool CSlaveNodeInfo::Init(std::string strAlias, std::string strWalletAddress, std::string strSharedPrivatekey, std::string strInetAddress, std::string& strErrorMessage)
 {
     if (!CServiceNodeInfo::Init(strInetAddress, strErrorMessage))
@@ -39,19 +40,14 @@ bool CSlaveNodeInfo::Init(std::string strAlias, std::string strWalletAddress, st
         return false;
     }
 
-    bool bCompressed;
+    bool compressed;
 
-    CSecret secret = bitcoinSecret.GetSecret(bCompressed);
+    CSecret secret = bitcoinSecret.GetSecret(compressed);
 
-    fSharedPrivateKey.SetSecret(secret, bCompressed);
+    fSharedPrivateKey.SetSecret(secret, compressed);
     fSharedPublicKey = fSharedPrivateKey.GetPubKey();
 
     return true;
-}
-
-bool CSlaveNodeInfo::IsStarted()
-{
-    return fState == kStarted;
 }
 
 bool CSlaveNodeInfo::IsValid()
@@ -78,7 +74,7 @@ bool CSlaveNodeInfo::UpdateTxIn(std::string& strErrorMessage)
     return FindTxIn(fTxIn, strErrorMessage);
 }
 
-bool CSlaveNodeInfo::UpdateWalletPublicKey(std::string strErrorMessage)
+bool CSlaveNodeInfo::UpdateWalletPublicKey(std::string& strErrorMessage)
 {
     // get public key from wallet address
     if (!GetPublicKey(fWalletAddress, fWalletPublicKey, strErrorMessage))
@@ -133,23 +129,19 @@ bool CSlaveNodeInfo::FindTxIn(CTxIn& txIn, std::string &strErrorMessage)
 
 
 
-bool CSlaveNodeInfo::GetNodeMessage(CNodeMessage &message, std::string &strErrorMessage)
-{
-    message.SetTime(GetAdjustedTime());
 
-    return true;
-}
 
 bool CSlaveNodeInfo::GetStartMessage(CStartServiceNodeMessage& message, std::string& strErrorMessage)
 {
     if (!GetNodeMessage(message, strErrorMessage))
         return false;
 
+    message.SetInetAddress(fInetAddress);
     message.SetTxIn(fTxIn);
     message.SetWalletPublicKey(fWalletPublicKey);
     message.SetSharedPublicKey(fSharedPublicKey);
-    message.SetCount(fCount);
-    message.SetCurrent(fCurrent);
+    message.SetServiceNodeCount(fCount);
+    message.SetServiceNodeIndex(fCurrent);
 
     if (!message.Sign(fWalletAddress, strErrorMessage))
         return false;
@@ -167,6 +159,9 @@ bool CSlaveNodeInfo::GetStopMessage(CStopServiceNodeMessage& message, std::strin
 
     std::vector<unsigned char> vSignature;
 
+    message.SetTxIn(fTxIn);
+    message.SetSharedPublicKey(fSharedPublicKey);
+
     if (!message.Sign(fWalletAddress, strErrorMessage))
         return false;
 
@@ -181,26 +176,28 @@ bool CSlaveNodeInfo::Check(std::string &strErrorMessage)
     return CServiceNodeInfo::Check(strErrorMessage);
 }
 
-bool CSlaveNodeInfo::Update(std::string &strErrorMessage)
+
+
+
+
+
+
+
+std::string CControlNode::Test()
 {
-    if (!UpdateTxIn(strErrorMessage))
-        return false;
-
-    if (!UpdateWalletPublicKey(strErrorMessage))
-        return false;
-
-    return true;
+    return "finished";
 }
+
 
 bool CControlNode::ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& data)
 {
-    if (pfrom->nVersion < MIN_CONTROLNODE_PROTOVERSION) {
+    if (pfrom->nVersion < CONTROLNODE_MIN_PROTOVERSION) {
         return false;
     }
 
-    if (REQ_CONTROLNODE_PROTOVERSION > 0)
+    if (CONTROLNODE_REQ_PROTOVERSION > 0)
     {
-        if (pfrom->nVersion != REQ_CONTROLNODE_PROTOVERSION)
+        if (pfrom->nVersion != CONTROLNODE_REQ_PROTOVERSION)
             return false;
     }
 
@@ -215,12 +212,8 @@ void CControlNode::UpdateLocks()
 
     pwalletMain->AvailableCoins(vOutput, true);
 
-    std::pair<std::string, CSlaveNodeInfo> pair;
-
-    BOOST_FOREACH(pair, fSlaveNodes)
+    BOOST_FOREACH(CSlaveNodeInfo slave, fSlaveNodes)
     {
-        CSlaveNodeInfo slave = pair.second;
-
         CTxIn txIn;
 
         std::string strErrorMessage;
@@ -236,129 +229,240 @@ std::string CControlNode::GenerateSharedKey()
 {
     CKey key;
 
-    bool compressed = false;
-
-    key.MakeNewKey(compressed);
+    key.MakeNewKey(true);
 
     CBitcoinSecret bitcoinsecret;
 
-    bitcoinsecret.SetSecret(key.GetSecret(compressed), compressed);
+    bool compressed;
+
+    CSecret secret = key.GetSecret(compressed);
+
+    bitcoinsecret.SetSecret(secret, compressed);
 
     return bitcoinsecret.ToString();
+}
+
+bool CControlNode::RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage)
+{
+    if (!CUtilityNode::RegisterServiceNode(message, node, strErrorMessage))
+        return false;
+
+    CSlaveNodeInfo* slave = GetSlaveNode(message.GetSharedPublicKey());
+
+    if (slave != NULL)
+    {
+        slave->SetState(kStarted);
+    }
+
+    return true;
+}
+
+bool CControlNode::UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node, std::string& strErrorMessage)
+{
+    if (!CUtilityNode::UpdateServiceNode(message, node, strErrorMessage))
+        return false;
+
+    CSlaveNodeInfo* slave = GetSlaveNode(message.GetSharedPublicKey());
+
+    if (slave != NULL)
+    {
+        slave->SetState(kStarted);
+    }
+
+    return true;
+}
+
+bool CControlNode::UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage)
+{
+    if (!CUtilityNode::UnregisterServiceNode(message, strErrorMessage))
+        return false;
+
+    CSlaveNodeInfo* slave = GetSlaveNode(message.GetSharedPublicKey());
+
+    if (slave != NULL)
+    {
+        slave->SetState(kStopped);
+        slave->SetTimeStopped(GetAdjustedTime());
+    }
+
+    return true;
 }
 
 std::vector<std::string> CControlNode::GetSlaveAliases()
 {
     std::vector<std::string> valiases;
 
-    std::pair<std::string, CSlaveNodeInfo> pair;
-
-    BOOST_FOREACH(pair, fSlaveNodes)
-        valiases.push_back(pair.first);
+    BOOST_FOREACH(CSlaveNodeInfo slave, fSlaveNodes)
+        valiases.push_back(slave.GetAlias());
 
     return valiases;
 }
 
-bool CControlNode::HasSlave(std::string alias)
+bool CControlNode::HasSlaveNode(std::string alias)
 {
-    return fSlaveNodes.find(alias) != fSlaveNodes.end();
+    return GetSlaveNode(alias) != NULL;
 }
 
-void CControlNode::RegisterSlave(CSlaveNodeInfo slave)
+bool CControlNode::HasSlaveNode(CPubKey sharedPublicKey)
 {
-    assert(!HasSlave(slave.GetAlias()));
-
-    fSlaveNodes[slave.GetAlias()] = slave;
+    return GetSlaveNode(sharedPublicKey) != NULL;
 }
 
-void CControlNode::UnregisterSlave(std::string alias)
+CSlaveNodeInfo* CControlNode::GetSlaveNode(std::string alias)
 {
-    assert(HasSlave(alias));
+    for (int i = 0; i < fSlaveNodes.size(); i++)
+    {
+        if (fSlaveNodes[i].GetAlias() == alias)
+        {
+            return &fSlaveNodes[i];
+        }
+    }
 
-    fSlaveNodes.erase(alias);
+    return NULL;
 }
 
-bool CControlNode::StartSlave(std::string alias, std::string& strErrorMessage)
+CSlaveNodeInfo* CControlNode::GetSlaveNode(CPubKey sharedPublicKey)
+{
+    for (int i = 0; i < fSlaveNodes.size(); i++)
+    {
+        if (fSlaveNodes[i].GetSharedPublicKey() == sharedPublicKey)
+        {
+            return &fSlaveNodes[i];
+        }
+    }
+
+    return NULL;
+}
+
+void CControlNode::RegisterSlaveNode(CSlaveNodeInfo slave)
+{
+    assert(!HasSlaveNode(slave.GetAlias()));
+
+    fSlaveNodes.push_back(slave);
+}
+
+void CControlNode::UnregisterSlaveNode(std::string alias)
+{
+    assert(HasSlaveNode(alias));
+
+    std::vector<CSlaveNodeInfo>::iterator it;
+
+    for (it = fSlaveNodes.begin(); it != fSlaveNodes.end(); it++)
+    {
+        if ((*it).GetAlias() == alias)
+        {
+            fSlaveNodes.erase(it);
+
+            return;
+        }
+    }
+
+}
+
+bool CControlNode::StartSlaveNode(std::string alias, std::string& strErrorMessage)
 {
     // check if the wallet is syncing
     if (!CheckInitialBlockDownloadFinished(strErrorMessage))
         return false;
 
-    CSlaveNodeInfo slave = fSlaveNodes[alias];
+    CSlaveNodeInfo* slave = GetSlaveNode(alias);
 
-    if (slave.IsStarted())
+    if (slave == NULL)
     {
-        strErrorMessage = "Slave already started";
+        strErrorMessage = (boost::format("Service node \"%1%\" not found") % alias).str();
 
         return false;
     }
 
-    if (!slave.Check(strErrorMessage))
+    // TODO check if it exists in the list of servicenodes
+
+    if (slave->IsProcessing())
+    {
+        strErrorMessage = "Service node is still being processed";
+
+        return false;
+    }
+
+    if (slave->IsStarted())
+    {
+        strErrorMessage = "Service node already started";
+
+        return false;
+    }
+
+    if (!slave->Check(strErrorMessage))
         return false;
 
-    if (!slave.Update(strErrorMessage))
+    if (!slave->UpdateTxIn(strErrorMessage))
         return false;
 
-    if (!slave.Connect(strErrorMessage))
+    if (!slave->UpdateWalletPublicKey(strErrorMessage))
         return false;
 
-    slave.SetCount(-1);
-    slave.SetCurrent(-1);
+    if (!slave->Connect(strErrorMessage))
+        return false;
+
+    slave->SetCount(-1);
+    slave->SetCurrent(-1);
 
     CStartServiceNodeMessage message;
 
-    if (!slave.GetStartMessage(message, strErrorMessage))
+    if (!slave->GetStartMessage(message, strErrorMessage))
         return false;
 
-    slave.SetLastSignature(message.GetTime());
-    slave.SetLastSeen(message.GetTime());
+    slave->SetSignatureTime(message.GetTime());
+    slave->SetLastSeen(message.GetTime());
+
+    slave->SetState(kProcessing);
 
     // relay start message
     RelayMessage(message);
 
-    BOOST_FOREACH(CServiceNodeInfo node, fServiceNodes)
-    {
-        if (node.GetTxIn() == slave.GetTxIn())
-        {
-            strErrorMessage = "Input is already associated to a service node";
-            return false;
-        }
-    }
+    CServiceNodeInfo serviceNode = CServiceNodeInfo(slave);
 
-    // add to the service node list
-    fServiceNodes.push_back(slave);
+    if (!AddServiceNode(serviceNode, strErrorMessage))
+        return false;
 
     return true;
 }
 
-bool CControlNode::StopSlave(std::string alias, std::string &strErrorMessage)
+bool CControlNode::StopSlaveNode(std::string alias, std::string &strErrorMessage)
 {
     // check if the wallet is syncing
     if (!CheckInitialBlockDownloadFinished(strErrorMessage))
         return false;
 
-    CSlaveNodeInfo slave = fSlaveNodes[alias];
+    // TODO check if it exists in the list of servicenodes
 
-    if (!slave.IsStarted())
+    CSlaveNodeInfo* slave = GetSlaveNode(alias);
+
+    if (slave == NULL)
     {
-        strErrorMessage = "Slave not started";
+        strErrorMessage = (boost::format("Service node \"%1%\" not found") % alias).str();
 
         return false;
     }
 
-    if (!slave.Check(strErrorMessage))
-        return false;
+    if (slave->IsProcessing())
+    {
+        strErrorMessage = "Service node is still processing, please wait 5 minutes before retrying";
 
-    if (!slave.Update(strErrorMessage))
         return false;
+    }
 
-    if (!slave.Connect(strErrorMessage))
+    if (!slave->IsStarted())
+    {
+        strErrorMessage = "Service node not started";
+
         return false;
+    }
 
     CStopServiceNodeMessage message;
 
-    if (!slave.GetStopMessage(message, strErrorMessage))
+    if (!slave->GetStopMessage(message, strErrorMessage))
         return false;
+
+    slave->SetState(kProcessing);
 
     RelayMessage(message);
 

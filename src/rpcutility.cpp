@@ -168,8 +168,8 @@ json_spirit::Value listservicenodes(const json_spirit::Array& params, bool fHelp
     if (params.size() > 0)
         extensive = params[0].get_bool();
 
-    BOOST_FOREACH(CServiceNodeInfo node, pNodeMain->GetServiceNodes())
-        result += (boost::format("%1%\n") % (node.ToString(extensive))).str();
+    BOOST_FOREACH(boost::shared_ptr<CServiceNodeInfo> node, pNodeMain->GetServiceNodes())
+        result += (boost::format("%1%\n") % (node->ToString(extensive))).str();
 
     return result;
 }

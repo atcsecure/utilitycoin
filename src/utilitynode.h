@@ -37,12 +37,14 @@
 #define SERVICENODE_SECONDS_BETWEEN_EXPIRATION          60*60
 #define SERVICENODE_SECONDS_BETWEEN_REMOVAL             60*60
 #define SERVICENODE_TIME_PENALTY                        2*60*60
+#define SERVICENODE_MAX_PROCESSING_TIME                 60*10
 
 enum ServiceNodeState {
 
     kStopped,
     kStarted,
-    kProcessing
+    kProcessingStart,
+    kProcessingStop
 };
 
 std::string GetServiceNodeStateString(ServiceNodeState state);
@@ -79,29 +81,14 @@ protected:
 
 public:
     CServiceNodeInfo();
-    CServiceNodeInfo(CServiceNodeInfo* node)
-    {
-        fInetAddress = node->GetInetAddress();
-        fTxIn = node->GetTxIn();
-        fWalletPublicKey = node->GetWalletPublicKey();
-        fSharedPublicKey = node->GetSharedPublicKey();
-        fSignature = node->GetSignature();
-        fSignatureTime = node->GetSignatureTime();
-        fLastPing = node->GetLastPing();
-        fLastStart = node->GetLastStart();
-        fLastStop = node->GetLastStop();
-        fLastSeen = node->GetLastSeen();
-        fTimeStopped = node->GetTimeStopped();
-        fCurrent = node->GetCurrent();
-        fCount = node->GetCount();
-        fState = node->GetState();
-    }
 
     bool Init(std::string strInetAddress, std::string &strErrorMessage);
 
     virtual bool IsValid();
+    virtual bool IsRemove();
 
     virtual bool Check(std::string& strErrorMessage);
+
 
     virtual void UpdateState();
 
@@ -120,12 +107,17 @@ public:
 
     bool IsProcessing()
     {
-        return fState == kProcessing;
+        return fState == kProcessingStart || fState == kProcessingStop;
     }
 
     bool IsStarted()
     {
         return fState == kStarted;
+    }
+
+    bool IsStopped()
+    {
+        return fState == kStopped;
     }
 
     CAddress GetInetAddress()
@@ -350,7 +342,7 @@ protected:
     int64_t fLastSyncServiceNodeList;
     int fNumSyncServiceNodeListRequests;
 
-    std::vector<CServiceNodeInfo> fServiceNodes;
+    std::vector< boost::shared_ptr<CServiceNodeInfo> > fServiceNodes;
 
     std::set<COutPoint> fLockedOutPoints;
 
@@ -358,7 +350,6 @@ protected:
     std::vector<CNodeMessageRecord> fResponses;
     std::vector<CNodeMessageRecord> fRequests;
 
-    bool AddServiceNode(CServiceNodeInfo& node, std::string &strErrorMessage);
     bool DelServiceNode(CTxIn txIn, std::string &strErrorMessage);
 
 public:
@@ -386,18 +377,20 @@ public:
     bool HasLockedOutPoint(CTransaction tx);
     std::vector<COutPoint> GetLockedOutPoints();
 
-    std::vector<CServiceNodeInfo> GetServiceNodes()
+    std::vector< boost::shared_ptr<CServiceNodeInfo> > GetServiceNodes()
     {
         return fServiceNodes;
     }
 
     bool HasServiceNode(CTxIn txIn);
+
     CServiceNodeInfo* GetServiceNode(CTxIn txIn);
+    CServiceNodeInfo* GetServiceNode(CStartServiceNodeMessage& message);
+
     int GetServiceNodeIndex(CServiceNodeInfo* node);
 
-    virtual bool RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage);
-    virtual bool UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node, std::string& strErrorMessage);
-    virtual bool UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);
+    virtual bool StartServiceNode(CStartServiceNodeMessage& message, std::string& strErrorMessage);
+    virtual bool StopServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);
 
     void CleanNodeMessageRecords();
 
@@ -413,6 +406,7 @@ public:
 
 bool IsServiceNode(CUtilityNode *node);
 bool IsControlNode(CUtilityNode *node);
+bool IsSlaveNodeInfo(CServiceNodeInfo* info);
 bool CheckWalletLocked(std::string &strErrorMessage);
 bool CheckInitialBlockDownloadFinished(std::string &strErrorMessage);
 bool CheckSignatureTime(int64_t time, std::string& strErrorMessage);

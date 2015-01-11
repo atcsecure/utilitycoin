@@ -2,6 +2,7 @@
 #include "utilitynodemessage.h"
 #include "init.h"
 
+#include <boost/make_shared.hpp>
 #include <boost/format.hpp>
 
 CSlaveNodeInfo::CSlaveNodeInfo()
@@ -62,6 +63,12 @@ bool CSlaveNodeInfo::IsValid()
         return false;
 
     return true;
+}
+
+bool CSlaveNodeInfo::IsRemove()
+{
+    // never remove slave nodes
+    return false;
 }
 
 bool CSlaveNodeInfo::UpdateTxIn(std::vector<COutput> vOutput, std::string& strErrorMessage)
@@ -212,16 +219,21 @@ void CControlNode::UpdateLocks()
 
     pwalletMain->AvailableCoins(vOutput, true);
 
-    BOOST_FOREACH(CSlaveNodeInfo slave, fSlaveNodes)
+    BOOST_FOREACH(boost::shared_ptr<CServiceNodeInfo> node, fServiceNodes)
     {
-        CTxIn txIn;
+        if (IsSlaveNodeInfo(node.get()))
+        {
+            CSlaveNodeInfo* slave = (CSlaveNodeInfo*) node.get();
 
-        std::string strErrorMessage;
+            CTxIn txIn;
 
-        // TODO probably costs too much with a lot of inputs
-        if (slave.FindTxIn(vOutput, txIn, strErrorMessage))
-            if (!IsLockedOutPoint(txIn.prevout))
-                LockOutPoint(txIn.prevout);
+            std::string strErrorMessage;
+
+            // TODO probably costs too much with a lot of inputs
+            if (slave->FindTxIn(vOutput, txIn, strErrorMessage))
+                if (!IsLockedOutPoint(txIn.prevout))
+                    LockOutPoint(txIn.prevout);
+        }
     }
 }
 
@@ -242,58 +254,33 @@ std::string CControlNode::GenerateSharedKey()
     return bitcoinsecret.ToString();
 }
 
-bool CControlNode::RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage)
-{
-    if (!CUtilityNode::RegisterServiceNode(message, node, strErrorMessage))
-        return false;
+//void CControlNode::UpdateSlaveNodeList()
+//{
+//    for (int i = 0; i < fSlaveNodes.size(); i++)
+//    {
+//        if (fSlaveNodes[i].IsProcessing() && (GetAdjustedTime() - fSlaveNodes[i].GetProcessingStartTime() > SERVICENODE_MAX_PROCESSING_TIME))
+//        {
+//            if (fSlaveNodes[i].GetState() == kProcessingStart)
+//                fSlaveNodes[i].SetState(kStopped);
 
-    CSlaveNodeInfo* slave = GetSlaveNode(message.GetSharedPublicKey());
+//            if (fSlaveNodes[i].GetState() == kProcessingStop)
+//                fSlaveNodes[i].SetState(kStarted);
+//        }
+//    }
+//}
 
-    if (slave != NULL)
-    {
-        slave->SetState(kStarted);
-    }
-
-    return true;
-}
-
-bool CControlNode::UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node, std::string& strErrorMessage)
-{
-    if (!CUtilityNode::UpdateServiceNode(message, node, strErrorMessage))
-        return false;
-
-    CSlaveNodeInfo* slave = GetSlaveNode(message.GetSharedPublicKey());
-
-    if (slave != NULL)
-    {
-        slave->SetState(kStarted);
-    }
-
-    return true;
-}
-
-bool CControlNode::UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage)
-{
-    if (!CUtilityNode::UnregisterServiceNode(message, strErrorMessage))
-        return false;
-
-    CSlaveNodeInfo* slave = GetSlaveNode(message.GetSharedPublicKey());
-
-    if (slave != NULL)
-    {
-        slave->SetState(kStopped);
-        slave->SetTimeStopped(GetAdjustedTime());
-    }
-
-    return true;
-}
 
 std::vector<std::string> CControlNode::GetSlaveAliases()
 {
     std::vector<std::string> valiases;
 
-    BOOST_FOREACH(CSlaveNodeInfo slave, fSlaveNodes)
-        valiases.push_back(slave.GetAlias());
+    BOOST_FOREACH(boost::shared_ptr<CServiceNodeInfo> node, fServiceNodes)
+    {
+        if (IsSlaveNodeInfo(node.get()))
+        {
+            valiases.push_back(((CSlaveNodeInfo*)node.get())->GetAlias());
+        }
+    }
 
     return valiases;
 }
@@ -310,11 +297,16 @@ bool CControlNode::HasSlaveNode(CPubKey sharedPublicKey)
 
 CSlaveNodeInfo* CControlNode::GetSlaveNode(std::string alias)
 {
-    for (int i = 0; i < fSlaveNodes.size(); i++)
+    for (int i = 0; i < fServiceNodes.size(); i++)
     {
-        if (fSlaveNodes[i].GetAlias() == alias)
+        if (IsSlaveNodeInfo(fServiceNodes[i].get()))
         {
-            return &fSlaveNodes[i];
+            CSlaveNodeInfo* slave = (CSlaveNodeInfo*)fServiceNodes[i].get();
+
+            if (slave->GetAlias() == alias)
+            {
+                return slave;
+            }
         }
     }
 
@@ -323,40 +315,31 @@ CSlaveNodeInfo* CControlNode::GetSlaveNode(std::string alias)
 
 CSlaveNodeInfo* CControlNode::GetSlaveNode(CPubKey sharedPublicKey)
 {
-    for (int i = 0; i < fSlaveNodes.size(); i++)
+    for (int i = 0; i < fServiceNodes.size(); i++)
     {
-        if (fSlaveNodes[i].GetSharedPublicKey() == sharedPublicKey)
+        if (IsSlaveNodeInfo(fServiceNodes[i].get()))
         {
-            return &fSlaveNodes[i];
+            CSlaveNodeInfo* slave = (CSlaveNodeInfo*)fServiceNodes[i].get();
+
+            if (slave->GetSharedPublicKey() == sharedPublicKey)
+            {
+                return slave;
+            }
         }
     }
 
     return NULL;
 }
 
-void CControlNode::RegisterSlaveNode(CSlaveNodeInfo slave)
+void CControlNode::RegisterSlaveNode(CSlaveNodeInfo& slave)
 {
     assert(!HasSlaveNode(slave.GetAlias()));
 
-    fSlaveNodes.push_back(slave);
-}
+    fServiceNodes.push_back(boost::make_shared<CSlaveNodeInfo>(slave));
 
-void CControlNode::UnregisterSlaveNode(std::string alias)
-{
-    assert(HasSlaveNode(alias));
+    bool test = IsSlaveNodeInfo(fServiceNodes.back().get());
 
-    std::vector<CSlaveNodeInfo>::iterator it;
-
-    for (it = fSlaveNodes.begin(); it != fSlaveNodes.end(); it++)
-    {
-        if ((*it).GetAlias() == alias)
-        {
-            fSlaveNodes.erase(it);
-
-            return;
-        }
-    }
-
+    assert(test);
 }
 
 bool CControlNode::StartSlaveNode(std::string alias, std::string& strErrorMessage)
@@ -413,15 +396,11 @@ bool CControlNode::StartSlaveNode(std::string alias, std::string& strErrorMessag
     slave->SetSignatureTime(message.GetTime());
     slave->SetLastSeen(message.GetTime());
 
-    slave->SetState(kProcessing);
+    slave->SetState(kProcessingStart);
+    slave->SetProcessingStartTime(GetAdjustedTime());
 
     // relay start message
     RelayMessage(message);
-
-    CServiceNodeInfo serviceNode = CServiceNodeInfo(slave);
-
-    if (!AddServiceNode(serviceNode, strErrorMessage))
-        return false;
 
     return true;
 }
@@ -462,7 +441,8 @@ bool CControlNode::StopSlaveNode(std::string alias, std::string &strErrorMessage
     if (!slave->GetStopMessage(message, strErrorMessage))
         return false;
 
-    slave->SetState(kProcessing);
+    slave->SetState(kProcessingStop);
+    slave->SetProcessingStartTime(GetAdjustedTime());
 
     RelayMessage(message);
 

@@ -26,6 +26,10 @@
 #include "guiutil.h"
 #include "rpcconsole.h"
 #include "wallet.h"
+#include "init.h"
+#include "utilityservicenode.h"
+#include "utilitycontrolnode.h"
+#include "utilitynode.h"
 
 #ifdef Q_OS_MAC
 #include "macdockiconhandler.h"
@@ -78,6 +82,7 @@ BitcoinGUI::BitcoinGUI(QWidget *parent):
     rpcConsole(0)
 {
     resize(850, 550);
+
     setWindowTitle(tr("UtilityCoin") + " - " + tr("Wallet"));
 
 //    QString stylesheet = "";
@@ -373,13 +378,34 @@ void BitcoinGUI::createToolBars()
 
 void BitcoinGUI::setClientModel(ClientModel *clientModel)
 {
+    QString suffix;
+
+    if (IsServiceNode(pNodeMain))
+        suffix += QString(" - ") + tr("Service");
+
+    if (IsControlNode(pNodeMain))
+        suffix += QString(" - ") + tr("Control");
+
     this->clientModel = clientModel;
     if(clientModel)
     {
+        if (clientModel->isTestNet())
+            suffix += QString(" ") + tr("[testnet]");
+
+        if (suffix.size() > 0)
+        {
+            setWindowTitle(windowTitle() + suffix);
+
+            if(trayIcon)
+            {
+                trayIcon->setToolTip(tr("UtilityCoin client") + suffix);
+            }
+        }
+
         // Replace some strings and icons, when using the testnet
         if(clientModel->isTestNet())
         {
-            setWindowTitle(windowTitle() + QString(" ") + tr("[testnet]"));
+
 #ifndef Q_OS_MAC
             qApp->setWindowIcon(QIcon(":icons/windowicon_testnet"));
             setWindowIcon(QIcon(":icons/windowicon_testnet"));
@@ -388,7 +414,6 @@ void BitcoinGUI::setClientModel(ClientModel *clientModel)
 #endif
             if(trayIcon)
             {
-                trayIcon->setToolTip(tr("UtilityCoin client") + QString(" ") + tr("[testnet]"));
                 trayIcon->setIcon(QIcon(":/icons/toolbar_testnet"));
                 toggleHideAction->setIcon(QIcon(":/icons/showhide_testnet"));
             }

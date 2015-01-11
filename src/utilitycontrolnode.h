@@ -16,6 +16,7 @@ protected:
     std::string fAlias;
     CBitcoinAddress fWalletAddress;
     CKey fSharedPrivateKey;
+    int64_t fProcessingStartTime;
 
 public:
     CSlaveNodeInfo();
@@ -23,6 +24,7 @@ public:
     bool Init(std::string strAlias, std::string strWalletAddress, std::string strSharedPrivatekey, std::string strInetAddress, std::string &strErrorMessage);
 
     virtual bool IsValid();
+    virtual bool IsRemove();
 
     virtual bool Check(std::string& strErrorMessage);
 
@@ -47,6 +49,16 @@ public:
         return fWalletAddress;
     }
 
+    int64_t GetProcessingStartTime()
+    {
+        return fProcessingStartTime;
+    }
+
+    void SetProcessingStartTime(int64_t value)
+    {
+        fProcessingStartTime = value;
+    }
+
 
 };
 
@@ -56,7 +68,8 @@ public:
 class CControlNode: public CUtilityNode
 {
 protected:
-    std::vector<CSlaveNodeInfo> fSlaveNodes;
+    // TODO shared_ptr vector with slave nodes only for easy reference
+    //std::vector< boost::shared_ptr<CServiceNodeInfo> > fSlaveNodes;
 
 public:
     virtual std::string Test();
@@ -64,10 +77,6 @@ public:
     virtual bool ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& data);
 
     virtual void UpdateLocks();
-
-    virtual bool RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage);
-    virtual bool UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node, std::string& strErrorMessage);
-    virtual bool UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);
 
     std::string GenerateSharedKey();
 
@@ -79,8 +88,7 @@ public:
 
     std::vector<std::string> GetSlaveAliases();
 
-    void RegisterSlaveNode(CSlaveNodeInfo slave);
-    void UnregisterSlaveNode(std::string alias);
+    void RegisterSlaveNode(CSlaveNodeInfo &slave);
 
     bool StartSlaveNode(std::string alias, std::string& strErrorMessage);
     bool StopSlaveNode(std::string alias, std::string& strErrorMessage);

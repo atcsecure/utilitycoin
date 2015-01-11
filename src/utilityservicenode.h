@@ -31,9 +31,8 @@ public:
 
     virtual bool ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& data);
 
-    virtual bool RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node,  std::string& strErrorMessage);
-    virtual bool UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node,  std::string& strErrorMessage);
-    virtual bool UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);
+    virtual bool StartServiceNode(CStartServiceNodeMessage& message, std::string& strErrorMessage);
+    virtual bool StopServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);
 
     virtual bool Ping(std::string& strErrorMessage);
 

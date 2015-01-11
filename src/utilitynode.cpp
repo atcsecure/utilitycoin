@@ -6,6 +6,7 @@
 #include "init.h"
 #include "main.h"
 
+#include <boost/make_shared.hpp>
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 
@@ -17,6 +18,11 @@ bool IsServiceNode(CUtilityNode* node)
 bool IsControlNode(CUtilityNode* node)
 {
     return (typeid(*node) == typeid(CControlNode));
+}
+
+bool IsSlaveNodeInfo(CServiceNodeInfo* info)
+{
+    return (typeid(*info) == typeid(CSlaveNodeInfo));
 }
 
 bool CheckWalletLocked(std::string &strErrorMessage)
@@ -261,7 +267,9 @@ std::string GetServiceNodeStateString(ServiceNodeState state)
     {
         case kStarted: return "Started"; break;
         case kStopped: return "Stopped"; break;
-        case kProcessing: return "Processing"; break;
+        case kProcessingStop:
+        case kProcessingStart:
+            return "Processing"; break;
     }
 
     return "Undefined";
@@ -300,6 +308,17 @@ bool CServiceNodeInfo::Init(std::string strInetAddress, std::string& strErrorMes
 bool CServiceNodeInfo::IsValid()
 {
     return fInetAddress.IsValid();
+}
+
+bool CServiceNodeInfo::IsRemove()
+{
+    if (!IsStopped())
+        return false;
+
+    if (GetAdjustedTime() - GetTimeStopped() < SERVICENODE_SECONDS_BETWEEN_REMOVAL)
+        return false;
+
+    return true;
 }
 
 bool CServiceNodeInfo::Check(std::string &strErrorMessage)
@@ -524,12 +543,30 @@ bool CUtilityNode::HasServiceNode(CTxIn txIn)
 
 CServiceNodeInfo* CUtilityNode::GetServiceNode(CTxIn txIn)
 {
-    for (int i = 0; i < fServiceNodes.size(); i++)
+    BOOST_FOREACH(boost::shared_ptr<CServiceNodeInfo> info, fServiceNodes)
     {
-        if (fServiceNodes[i].GetTxIn() == txIn)
-        {
-            return &fServiceNodes[i];
-        }
+        if (info->GetTxIn() == txIn)
+            return info.get();
+    }
+
+    return NULL;
+}
+
+CServiceNodeInfo* CUtilityNode::GetServiceNode(CStartServiceNodeMessage& message)
+{
+    BOOST_FOREACH(boost::shared_ptr<CServiceNodeInfo> info, fServiceNodes)
+    {
+        if (info->GetTxIn() == message.GetTxIn())
+            return info.get();
+
+        if (info->GetInetAddress() == message.GetInetAddress())
+            return info.get();
+
+        if (info->GetSharedPublicKey() == message.GetSharedPublicKey())
+            return info.get();
+
+        if (info->GetWalletPublicKey() == message.GetWalletPublicKey())
+            return info.get();
     }
 
     return NULL;
@@ -539,36 +576,20 @@ int CUtilityNode::GetServiceNodeIndex(CServiceNodeInfo* node)
 {
     for (int i = 0; i < fServiceNodes.size(); i++)
     {
-        if (fServiceNodes[i].GetTxIn() == node->GetTxIn())
-        {
+        if (fServiceNodes[i]->GetTxIn() == node->GetTxIn())
             return i;
-        }
     }
 
     return -1;
 }
 
-bool CUtilityNode::AddServiceNode(CServiceNodeInfo& node, std::string& strErrorMessage)
-{
-    if (HasServiceNode(node.GetTxIn()))
-    {
-        strErrorMessage = (boost::format("Input %1% is already associated to a service node") % node.GetTxIn().ToString()).str();
-
-        return false;
-    }
-
-    fServiceNodes.push_back(node);
-
-    return true;
-}
-
 bool CUtilityNode::DelServiceNode(CTxIn txIn, std::string &strErrorMessage)
 {
-    std::vector<CServiceNodeInfo>::iterator it;
+    std::vector< boost::shared_ptr<CServiceNodeInfo> >::iterator it;
 
     for (it = fServiceNodes.begin(); it != fServiceNodes.end(); it++)
     {
-        if ((*it).GetTxIn() == txIn)
+        if ((*it)->GetTxIn() == txIn)
         {
             fServiceNodes.erase(it);
 
@@ -581,67 +602,41 @@ bool CUtilityNode::DelServiceNode(CTxIn txIn, std::string &strErrorMessage)
     return false;
 }
 
-bool CUtilityNode::RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage)
+bool CUtilityNode::StartServiceNode(CStartServiceNodeMessage& message, std::string& strErrorMessage)
 {
     printf("CUtilityNode::RegisterServiceNode: %s\n", message.GetInetAddress().ToString().c_str());
 
-    if (message.GetTime() < node.GetLastStart())
-    {
-        strErrorMessage = "newer start message already received";
+    CServiceNodeInfo* node = GetServiceNode(message);
 
-        return false;
+    if (node == NULL)
+    {
+        boost::shared_ptr<CServiceNodeInfo> ptr = boost::make_shared<CServiceNodeInfo>();
+
+        fServiceNodes.push_back(ptr);
+
+        node = ptr.get();
+
+        node->SetTxIn(message.GetTxIn());
     }
-
-    if (message.GetTime() < node.GetLastStop())
+    else
     {
-        strErrorMessage = "newer stop message already received";
+        if (message.GetTime() < node->GetLastStart())
+        {
+            strErrorMessage = "newer start message already received";
 
-        return false;
-    }
+            return false;
+        }
 
-    if (HasServiceNode(node.GetTxIn()))
-    {
-        strErrorMessage = "service node already registered";
+        if (message.GetTime() < node->GetLastStop())
+        {
+            strErrorMessage = "newer stop message already received";
 
-        return false;
-    }
-
-    node.SetLastStart(message.GetTime());
-    node.SetInetAddress(message.GetInetAddress());
-    node.SetSignature(message.GetSignature());
-    node.SetSignatureTime(message.GetTime());
-    node.SetWalletPublicKey(message.GetWalletPublicKey());
-    node.SetSharedPublicKey(message.GetSharedPublicKey());
-    node.SetInetAddress(message.GetInetAddress());
-    node.SetTxIn(message.GetTxIn());
-    node.SetLastSeen(message.GetTime());
-    node.SetState(kStarted);
-
-    AddServiceNode(node, strErrorMessage);
-
-    return true;
-}
-
-bool CUtilityNode::UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo* node, std::string& strErrorMessage)
-{
-    printf("CUtilityNode::UpdateServiceNode: %s\n", message.GetInetAddress().ToString().c_str());
-
-    // check newer entries
-    if (message.GetTime() < node->GetLastStart())
-    {
-        strErrorMessage = "newer start message already received";
-
-        return false;
-    }
-
-    if (message.GetTime() < node->GetLastStop())
-    {
-        strErrorMessage = "newer stop message already received";
-
-        return false;
+            return false;
+        }
     }
 
     node->SetLastStart(message.GetTime());
+    node->SetInetAddress(message.GetInetAddress());
     node->SetSignature(message.GetSignature());
     node->SetSignatureTime(message.GetTime());
     node->SetWalletPublicKey(message.GetWalletPublicKey());
@@ -653,7 +648,7 @@ bool CUtilityNode::UpdateServiceNode(CStartServiceNodeMessage& message, CService
     return true;
 }
 
-bool CUtilityNode::UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage)
+bool CUtilityNode::StopServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage)
 {
     printf("CUtilityNode::UnregisterServiceNode: %s\n", message.GetInetAddress().ToString().c_str());
 
@@ -718,17 +713,17 @@ void CUtilityNode::SyncServiceNodeList()
 
 void CUtilityNode::UpdateServiceNodeList()
 {
-    std::vector<CServiceNodeInfo>::iterator it = fServiceNodes.begin();
+    std::vector< boost::shared_ptr<CServiceNodeInfo> >::iterator it = fServiceNodes.begin();
 
     while(it != fServiceNodes.end())
     {
-        CServiceNodeInfo node = (*it);
+        boost::shared_ptr<CServiceNodeInfo> info = (*it);
 
-        node.UpdateState();
+        info->UpdateState();
 
-        if (node.GetState() == kStopped && (GetAdjustedTime() - node.GetTimeStopped() > SERVICENODE_SECONDS_BETWEEN_REMOVAL))
+        if (info->IsRemove())
         {
-            printf("UpdateServiceNodeList: Inactive service node removed %s\n", node.GetInetAddress().ToString().c_str());
+            printf("UpdateServiceNodeList: Inactive service node removed %s\n", info->GetInetAddress().ToString().c_str());
 
             it = fServiceNodes.erase(it);
         }
@@ -871,13 +866,13 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CGetServiceNodeListMessage& messa
     int count = fServiceNodes.size();
     int index = 0;
 
-    BOOST_FOREACH(CServiceNodeInfo node, fServiceNodes)
+    BOOST_FOREACH(boost::shared_ptr<CServiceNodeInfo> node, fServiceNodes)
     {
-        if (node.IsStarted())
+        if (node->IsStarted())
         {
             CStartServiceNodeMessage startMessage;
 
-            if (!node.GetStartMessage(startMessage, count, index, strErrorMessage))
+            if (!node->GetStartMessage(startMessage, count, index, strErrorMessage))
             {
                 printf("GetServiceNodeListMessage - Unable to get start message, %s\n", strErrorMessage.c_str());
 
@@ -1046,16 +1041,30 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
         return false;
     }
 
-    CServiceNodeInfo* node = GetServiceNode(message.GetTxIn());
+    CServiceNodeInfo* node = GetServiceNode(message);
+
+    // don't check tx in if its already in the list
+    if (node == NULL || node->GetTxIn() != message.GetTxIn())
+    {
+        // new service node entry
+        if (!CheckTxInConfirmations(message.GetTxIn(), SERVICENODE_MIN_CONFIRMATIONS, strErrorMessage))
+        {
+            printf("StartServiceNodeMessage - CheckTxConfirmations - %s\n", strErrorMessage.c_str());
+
+            pfrom->Misbehaving(20);
+
+            return false;
+        }
+    }
 
     if (node != NULL)
-    {
+    {        
         // existing service node entry
         if (message.GetServiceNodeCount() == -1 && !node->IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_UPDATES))
         {
             node->SetLastSeen(message.GetTime());
 
-            if (!UpdateServiceNode(message, node, strErrorMessage))
+            if (!StartServiceNode(message, strErrorMessage))
             {
                 printf("StartServiceNodeMessage - UpdateServiceNode - %s\n", strErrorMessage.c_str());
 
@@ -1067,19 +1076,7 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
     }
     else
     {
-        // new service node entry
-        if (!CheckTxInConfirmations(message.GetTxIn(), SERVICENODE_MIN_CONFIRMATIONS, strErrorMessage))
-        {
-            printf("StartServiceNodeMessage - CheckTxConfirmations - %s\n", strErrorMessage.c_str());
-
-            pfrom->Misbehaving(20);
-
-            return false;
-        }
-
-        CServiceNodeInfo newNode;
-
-        if (!RegisterServiceNode(message, newNode, strErrorMessage))
+        if (!StartServiceNode(message, strErrorMessage))
         {
             printf("StartServiceNodeMessage - RegisterServiceNode - %s\n", strErrorMessage.c_str());
 
@@ -1087,7 +1084,7 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
         }
 
         // add the node to the address manager
-        addrman.Add(newNode.GetInetAddress(), pfrom->addr, SERVICENODE_TIME_PENALTY);
+        addrman.Add(message.GetInetAddress(), pfrom->addr, SERVICENODE_TIME_PENALTY);
 
         if (message.GetServiceNodeCount() == -1)
             RelayMessage(message);
@@ -1168,7 +1165,7 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStopServiceNodeMessage& message)
         return false;
     }
 
-    if (!UnregisterServiceNode(message, strErrorMessage))
+    if (!StopServiceNode(message, strErrorMessage))
     {
         printf("StopServiceNodeMessage - UnregisterServiceNode - %s\n", strErrorMessage.c_str());
 

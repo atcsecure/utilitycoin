@@ -40,9 +40,9 @@ bool CServiceNode::ProcessMessage(CNode* pfrom, std::string strCommand, CDataStr
     return CUtilityNode::ProcessMessage(pfrom, strCommand, data);
 }
 
-bool CServiceNode::RegisterServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo &node, std::string& strErrorMessage)
+bool CServiceNode::StartServiceNode(CStartServiceNodeMessage& message, std::string& strErrorMessage)
 {
-    if (!CUtilityNode::RegisterServiceNode(message, node, strErrorMessage))
+    if (!CUtilityNode::StartServiceNode(message, strErrorMessage))
         return false;
 
     if (fSharedPublicKey == message.GetSharedPublicKey())
@@ -55,24 +55,9 @@ bool CServiceNode::RegisterServiceNode(CStartServiceNodeMessage& message, CServi
     return true;
 }
 
-bool CServiceNode::UpdateServiceNode(CStartServiceNodeMessage& message, CServiceNodeInfo *node, std::string& strErrorMessage)
+bool CServiceNode::StopServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage)
 {
-    if (!CUtilityNode::UpdateServiceNode(message, node, strErrorMessage))
-        return false;
-
-    if (fSharedPublicKey == message.GetSharedPublicKey())
-    {
-        fState = kStarted;
-        fTxIn = message.GetTxIn();
-        fSignatureTime = message.GetTime();
-    }
-
-    return true;
-}
-
-bool CServiceNode::UnregisterServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage)
-{
-    if (!CUtilityNode::UnregisterServiceNode(message, strErrorMessage))
+    if (!CUtilityNode::StopServiceNode(message, strErrorMessage))
         return false;
 
     if (fSharedPublicKey == message.GetSharedPublicKey())
@@ -82,6 +67,7 @@ bool CServiceNode::UnregisterServiceNode(CStopServiceNodeMessage& message, std::
 
     return true;
 }
+
 
 bool CServiceNode::GetPingMessage(CPingServiceNodeMessage& message, std::string& strErrorMessage)
 {

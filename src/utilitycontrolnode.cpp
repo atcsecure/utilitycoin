@@ -211,6 +211,17 @@ bool CControlNode::ProcessMessage(CNode* pfrom, std::string strCommand, CDataStr
     return CUtilityNode::ProcessMessage(pfrom, strCommand, data);
 }
 
+bool CControlNode::AcceptStartMessage(CServiceNodeInfo* node, CStartServiceNodeMessage& message)
+{
+    if (HasSlaveNode(message.GetSharedPublicKey()))
+    {
+        return !node->IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_UPDATES);
+    }
+
+    return CUtilityNode::AcceptStartMessage(node, message);
+}
+
+
 void CControlNode::UpdateLocks()
 {
     CUtilityNode::UpdateLocks();

@@ -26,8 +26,8 @@
 #define SERVICENODE_REQ_PROTOVERSION                    -1
 #define CONTROLNODE_REQ_PROTOVERSION                    -1
 
-#define UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODEINFO   60 * 60
-#define UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODELIST   60 * 60 * 4
+#define UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODEINFO   5 * 60
+#define UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODELIST   60 * 60
 
 #define SERVICENODE_MIN_CONFIRMATIONS                   CONTROLNODE_MIN_CONFIRMATIONS
 #define SERVICENODE_COINS_REQUIRED                      CONTROLNODE_COINS_REQUIRED
@@ -88,7 +88,6 @@ public:
     virtual bool IsRemove();
 
     virtual bool Check(std::string& strErrorMessage);
-
 
     virtual void UpdateState();
 
@@ -280,14 +279,14 @@ class CNodeMessageRecord
 protected:
     int64_t fTime;
     std::string fAddress;
-    CNodeMessage fMessage;
+    boost::shared_ptr<CNodeMessage> fMessage;
 
 public:
     CNodeMessageRecord()
     {
     }
 
-    CNodeMessageRecord(std::string address, CNodeMessage message, int64_t time)
+    CNodeMessageRecord(std::string address, boost::shared_ptr<CNodeMessage> message, int64_t time)
     {
         fAddress = address;
         fMessage = message;
@@ -299,29 +298,14 @@ public:
         return fAddress;
     }
 
-    void SetNodeAddress(std::string value)
+    CNodeMessage* GetNodeMessage()
     {
-        fAddress = value;
-    }
-
-    CNodeMessage GetNodeMessage()
-    {
-        return fMessage;
-    }
-
-    void SetNodeMessage(CNodeMessage value)
-    {
-        fMessage = value;
+        return fMessage.get();
     }
 
     int64_t GetTime()
     {
         return fTime;
-    }
-
-    void SetTime(int64_t value)
-    {
-        fTime = value;
     }
 };
 
@@ -352,6 +336,8 @@ protected:
 
     bool DelServiceNode(CTxIn txIn, std::string &strErrorMessage);
 
+    bool IsRemoveRecord(CNodeMessageRecord& record);
+
 public:
     CUtilityNode()
     {
@@ -363,6 +349,8 @@ public:
 
     virtual bool ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& data);
     virtual void UpdateLocks();
+
+    virtual bool AcceptStartMessage(CServiceNodeInfo* node, CStartServiceNodeMessage& message);
 
     virtual bool HandleMessage(CNode* pfrom, CGetServiceNodeInfoMessage& message);
     virtual bool HandleMessage(CNode* pfrom, CGetServiceNodeListMessage& message);
@@ -388,6 +376,8 @@ public:
     CServiceNodeInfo* GetServiceNode(CStartServiceNodeMessage& message);
 
     int GetServiceNodeIndex(CServiceNodeInfo* node);
+
+
 
     virtual bool StartServiceNode(CStartServiceNodeMessage& message, std::string& strErrorMessage);
     virtual bool StopServiceNode(CStopServiceNodeMessage& message, std::string& strErrorMessage);

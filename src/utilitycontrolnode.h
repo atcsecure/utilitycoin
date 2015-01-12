@@ -78,6 +78,8 @@ public:
 
     virtual void UpdateLocks();
 
+    virtual bool AcceptStartMessage(CServiceNodeInfo* node, CStartServiceNodeMessage& message);
+
     std::string GenerateSharedKey();
 
     bool HasSlaveNode(std::string alias);

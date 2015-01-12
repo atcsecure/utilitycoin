@@ -18,6 +18,10 @@ extern const char UTILITY_MESSAGE_PINGSERVICENODE[];
 extern const char UTILITY_MESSAGE_STARTSERVICENODE[];
 extern const char UTILITY_MESSAGE_STOPSERVICENODE[];
 
+class CNodeMessage;
+
+bool IsGetServiceNodeInfoMessage(CNodeMessage* message);
+bool IsGetServiceNodeListMessage(CNodeMessage* message);
 
 class CNodeMessage
 {
@@ -25,6 +29,7 @@ protected:
     int64_t fTime;
 
 public:
+    virtual bool Compare(CNodeMessage& message) = 0;
 
     int64_t GetTime()
     {
@@ -53,6 +58,8 @@ protected:
     std::vector<unsigned char> fSignature;
 
 public:
+    virtual bool Compare(CNodeMessage& message) = 0;
+
     virtual bool IsValid()
     {
         return true;
@@ -92,6 +99,17 @@ public:
     CGetServiceNodeInfoMessage() {}
     CGetServiceNodeInfoMessage(CDataStream &data);
 
+    virtual bool Compare(CNodeMessage& message)
+    {
+        if (!IsGetServiceNodeInfoMessage(&message))
+            return false;
+
+        if (fTxIn != ((CGetServiceNodeInfoMessage*)&message)->GetTxIn())
+            return false;
+
+        return true;
+    }
+
     CTxIn GetTxIn()
     {
         return fTxIn;
@@ -112,6 +130,14 @@ class CGetServiceNodeListMessage: public CNodeMessage
 public:
     CGetServiceNodeListMessage() {}
 
+    virtual bool Compare(CNodeMessage& message)
+    {
+        if (!IsGetServiceNodeListMessage(&message))
+            return false;
+
+        return true;
+    }
+
     virtual bool IsValid();
     virtual void Relay(CNode *destination);
 };
@@ -127,6 +153,11 @@ protected:
 public:
     CPingServiceNodeMessage() {}
     CPingServiceNodeMessage(CDataStream &data);
+
+    virtual bool Compare(CNodeMessage& message)
+    {
+        return false;
+    }
 
     virtual bool IsValid();
     virtual void Relay(CNode *destination);
@@ -168,6 +199,11 @@ protected:
 public:
     CStartServiceNodeMessage(){}
     CStartServiceNodeMessage(CDataStream &data);
+
+    virtual bool Compare(CNodeMessage& message)
+    {
+        return false;
+    }
 
     virtual bool IsValid();
     virtual void Relay(CNode *destination);
@@ -247,6 +283,11 @@ public:
     CStopServiceNodeMessage() {}
     CStopServiceNodeMessage(CDataStream& data);
 
+    virtual bool Compare(CNodeMessage& message)
+    {
+        return false;
+    }
+
     virtual void Relay(CNode *destination);
     virtual bool IsValid();
     virtual std::string GetMessageString();
@@ -293,8 +334,6 @@ public:
 
 };
 
-bool IsGetServiceNodeInfoMessage(CNodeMessage* message);
-bool IsGetServiceNodeListMessage(CNodeMessage* message);
 bool SignMessage(CBitcoinAddress address, std::string strMessage, std::vector<unsigned char> &vSignature, std::string &strErrorMessage);
 bool SignMessage(CKey key, std::string strMessage, std::vector<unsigned char>& vSignature, std::string &strErrorMessage);
 bool VerifyMessage(CBitcoinAddress address, std::string strMessage, std::vector<unsigned char> vSignature, std::string &strErrorMessage);

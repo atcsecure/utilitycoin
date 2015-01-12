@@ -642,7 +642,8 @@ bool CUtilityNode::StartServiceNode(CStartServiceNodeMessage& message, std::stri
     node->SetWalletPublicKey(message.GetWalletPublicKey());
     node->SetSharedPublicKey(message.GetSharedPublicKey());
     node->SetInetAddress(message.GetInetAddress());
-    node->SetLastSeen(message.GetTime());
+    node->SetLastSeen(GetAdjustedTime());
+    node->SetTxIn(message.GetTxIn());
     node->SetState(kStarted);
 
     return true;
@@ -704,9 +705,9 @@ void CUtilityNode::SyncServiceNodeList()
         {
             printf("requesting service node list %s\n", pnode->addr.ToString().c_str());
 
-            message.Relay(pnode);
+            fRequests.push_back(CNodeMessageRecord(pnode->addr.ToString(), boost::make_shared<CGetServiceNodeListMessage>(message), GetAdjustedTime()));
 
-            fRequests.push_back(CNodeMessageRecord(pnode->addr.ToString(), message, GetAdjustedTime()));
+            message.Relay(pnode);
         }
     }
 }
@@ -734,26 +735,52 @@ void CUtilityNode::UpdateServiceNodeList()
     }
 }
 
+bool CUtilityNode::IsRemoveRecord(CNodeMessageRecord& record)
+{
+    CNodeMessage* message = record.GetNodeMessage();
+
+    // default time span of one hour
+    int span = 60 * 60;
+
+    if (IsGetServiceNodeInfoMessage(message))
+        span = UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODEINFO;
+
+    if (IsGetServiceNodeListMessage(message))
+        span = UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODELIST;
+
+    if (record.GetTime() < GetAdjustedTime() - span)
+        return true;
+
+    return false;
+}
+
+
 void CUtilityNode::CleanNodeMessageRecords()
 {
-    std::vector<CNodeMessageRecord>::iterator it = fRequests.begin();
+    std::vector<CNodeMessageRecord>::iterator it;
+
+    it = fRequests.begin();
 
     while (it != fRequests.end())
     {
         CNodeMessageRecord record = (*it);
-        CNodeMessage message = record.GetNodeMessage();
 
-        // default time span of one hour
-        int span = 60 * 60;
+        if (IsRemoveRecord(record))
 
-        if (IsGetServiceNodeInfoMessage(&message))
-            span = UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODEINFO;
-
-        if (IsGetServiceNodeListMessage(&message))
-            span = UTILITYNODE_SECONDS_BETWEEN_GETSERVICENODELIST;
-
-        if (record.GetTime() < GetAdjustedTime() - span)
             it = fRequests.erase(it);
+        else
+            it++;
+    }
+
+    it = fResponses.begin();
+
+    while (it != fResponses.end())
+    {
+        CNodeMessageRecord record = (*it);
+
+        if (IsRemoveRecord(record))
+
+            it = fResponses.erase(it);
         else
             it++;
     }
@@ -775,18 +802,10 @@ bool HasRecord(std::vector<CNodeMessageRecord> vrecords, CNodeMessage& message, 
         if (address.size() > 0 && address != record.GetNodeAddress())
             continue;
 
-        CNodeMessage messageCompare = record.GetNodeMessage();
+        CNodeMessage* messageCompare = record.GetNodeMessage();
 
-        if (IsGetServiceNodeInfoMessage(&messageCompare) && IsGetServiceNodeInfoMessage(&message))
-        {
-            if (((CGetServiceNodeInfoMessage*)&messageCompare)->GetTxIn() == ((CGetServiceNodeInfoMessage*)&message)->GetTxIn())
-                return true;
-        }
-
-        if (IsGetServiceNodeListMessage(&messageCompare) && IsGetServiceNodeListMessage(&message))
-        {
+        if (messageCompare->Compare(message))
             return true;
-        }
     }
 
     return false;
@@ -802,6 +821,18 @@ bool CUtilityNode::HasResponseRecord(CNodeMessage& message, std::string address)
     return HasRecord(fResponses, message, address);
 }
 
+
+bool CUtilityNode::AcceptStartMessage(CServiceNodeInfo* node, CStartServiceNodeMessage& message)
+{
+     if (message.GetServiceNodeCount() == -1)
+         return false;
+
+     if (!node->IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_UPDATES))
+         return false;
+
+     return true;
+}
+
 bool CUtilityNode::HandleMessage(CNode* pfrom, CGetServiceNodeInfoMessage& message)
 {
     // check if the wallet is syncing
@@ -810,7 +841,20 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CGetServiceNodeInfoMessage& messa
 
     std::string strErrorMessage;
 
-    printf("GetServiceNodeListMessage - sending servicenode entry %s\n", message.GetTxIn().ToString().c_str());
+    // TODO handle node being restarted
+    if (HasResponseRecord(message, pfrom->addr.ToString()))
+    {
+        // should only ask for the list once
+        printf("CGetServiceNodeInfoMessage - node %s already asked for the list\n", pfrom->addr.ToString().c_str());
+
+        // TODO bit soft for now as the node might be restarting
+        pfrom->Misbehaving(5);
+    }
+
+    // record response
+    fResponses.push_back(CNodeMessageRecord(pfrom->addr.ToString(), boost::make_shared<CGetServiceNodeInfoMessage>(message), GetAdjustedTime()));
+
+    printf("CGetServiceNodeInfoMessage - sending servicenode entry %s\n", message.GetTxIn().ToString().c_str());
 
     int count = fServiceNodes.size();
 
@@ -859,7 +903,7 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CGetServiceNodeListMessage& messa
     }
 
     // record response
-    fResponses.push_back(CNodeMessageRecord(pfrom->addr.ToString(), message, GetAdjustedTime()));
+    fResponses.push_back(CNodeMessageRecord(pfrom->addr.ToString(), boost::make_shared<CGetServiceNodeListMessage>(message), GetAdjustedTime()));
 
     printf("GetServiceNodeListMessage - sending servicenode entries\n");
 
@@ -951,20 +995,21 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CPingServiceNodeMessage& message)
         // not in the list, request start message if not recently requested
         std::string address = pfrom->addr.ToString();
 
-        if (HasRequestRecord(message, address))
+        CGetServiceNodeInfoMessage requestMessage;
+
+        requestMessage.SetTime(GetAdjustedTime());
+        requestMessage.SetTxIn(message.GetTxIn());
+
+        if (HasRequestRecord(requestMessage, address))
         {
             printf("PingServiceNode - Service node info already requested\n");
 
             return false;
         }
 
-        CGetServiceNodeInfoMessage requestMessage;
+        fRequests.push_back(CNodeMessageRecord(address, boost::make_shared<CGetServiceNodeInfoMessage>(requestMessage), GetAdjustedTime()));
 
-        requestMessage.SetTime(GetAdjustedTime());
-        requestMessage.SetTxIn(message.GetTxIn());
         requestMessage.Relay(pfrom);
-
-        fRequests.push_back(CNodeMessageRecord(address, requestMessage, GetAdjustedTime()));
     }
 
     return true;
@@ -1059,10 +1104,10 @@ bool CUtilityNode::HandleMessage(CNode* pfrom, CStartServiceNodeMessage& message
 
     if (node != NULL)
     {        
-        // existing service node entry
-        if (message.GetServiceNodeCount() == -1 && !node->IsUpdatedWithin(SERVICENODE_SECONDS_BETWEEN_UPDATES))
+        // existing service node entry        
+        if (AcceptStartMessage(node, message))
         {
-            node->SetLastSeen(message.GetTime());
+            node->SetLastSeen(GetAdjustedTime());
 
             if (!StartServiceNode(message, strErrorMessage))
             {

@@ -49,10 +49,10 @@
         <file alias="toolbar_testnet">res/icons/utilitycoin_testnet_32x32.png</file>
     </qresource>
     <qresource prefix="/images">
-        <file alias="about">res/icons/utilitycoin_256x256.png</file>
-        <file alias="about_testnet">res/icons/utilitycoin_testnet_256x256.png</file>
-        <file alias="splash">res/icons/utilitycoin_256x256.png</file>
-        <file alias="splash_testnet">res/icons/utilitycoin_testnet_256x256.png</file>
+        <file alias="about">res/images/logo_text.png</file>
+        <file alias="about_testnet">res/images/logo_text_testnet.png</file>
+        <file alias="splash">res/images/logo_text.png</file>
+        <file alias="splash_testnet">res/images/logo_text_testnet.png</file>
     </qresource>
     <qresource prefix="/movies">
         <file alias="update_spinner">res/movies/update_spinner.mng</file>
